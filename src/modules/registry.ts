@@ -4,6 +4,8 @@ import { musclesModule } from './muscles/module';
 import { variationsModule } from './variations/module';
 import { recipesModule } from './recipes/module';
 import { splitsModule } from './splits/module';
+import { goalsModule } from './goals/module';
+import { previewModule } from './preview/module';
 
 // The one place new sections are registered. Order = sidebar order.
 export const modules: AdminModule[] = [
@@ -12,5 +14,7 @@ export const modules: AdminModule[] = [
   variationsModule,
   recipesModule,
   splitsModule,
+  goalsModule,
+  previewModule,
   // future: onboardingModule, notificationsModule, featureFlagsModule, …
 ];

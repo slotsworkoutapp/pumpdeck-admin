@@ -47,6 +47,34 @@ export interface Catalog {
   familiesByKey: Map<string, ContentFamily>;
 }
 
+// --- Goal profiles (program generation v2) ---
+export interface ContentGoal {
+  id: string;
+  goal_key: string;
+  display_name: string;
+  rep_shift: number;
+  rest_multiplier: number;
+  set_shift: number;
+  sort_order: number;
+  enabled: boolean;
+}
+
+export function useGoals() {
+  const [goals, setGoals] = useState<ContentGoal[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase.from('content_goal_profiles').select('*').order('sort_order');
+      if (error) setError(error.message);
+      else setGoals((data ?? []) as ContentGoal[]);
+      setLoading(false);
+    })();
+  }, []);
+  return { goals, error, loading };
+}
+
 // --- Split templates (program generation v2) ---
 export interface SplitDay {
   weekday: number; // 1=Sun … 7=Sat
