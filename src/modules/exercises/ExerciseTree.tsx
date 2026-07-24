@@ -12,11 +12,13 @@ interface GroupNode { key: string; label: string; count: number; muscles: Muscle
 
 export default function ExerciseTree({
   catalog,
+  posters,
   onOpen,
   onOpenMuscle,
   onOpenVariation,
 }: {
   catalog: Catalog;
+  posters: Map<string, string>;
   onOpen: (id: string) => void;
   onOpenMuscle: (id: string) => void;
   onOpenVariation: (key: string) => void;
@@ -105,7 +107,7 @@ export default function ExerciseTree({
                       </button>
                       <div className="ml-3 border-l-2 border-slate-100 pl-2">
                         {f.exercises.map((e) => (
-                          <ExRow key={e.id} e={e} secondary={secondaryOf(e)} onOpen={onOpen} />
+                          <ExRow key={e.id} e={e} secondary={secondaryOf(e)} poster={posters.get(e.id)} onOpen={onOpen} />
                         ))}
                       </div>
                     </div>
@@ -127,12 +129,28 @@ export default function ExerciseTree({
   );
 }
 
-function ExRow({ e, secondary, onOpen }: { e: ContentExercise; secondary: string; onOpen: (id: string) => void }) {
+// A small thumbnail square: the exercise's poster if it has one, else an empty
+// placeholder — so you can see at a glance which exercises still need media.
+export function Thumb({ url }: { url?: string }) {
+  return url ? (
+    <img src={url} alt="" className="size-8 shrink-0 rounded-md border border-slate-200 object-cover" />
+  ) : (
+    <div className="grid size-8 shrink-0 place-items-center rounded-md border border-dashed border-slate-200 bg-slate-50">
+      <svg viewBox="0 0 24 24" className="size-3.5 text-slate-300" fill="none" stroke="currentColor" strokeWidth={2}>
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="m3 16 5-5 4 4 3-3 6 6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  );
+}
+
+function ExRow({ e, secondary, poster, onOpen }: { e: ContentExercise; secondary: string; poster?: string; onOpen: (id: string) => void }) {
   return (
     <button
       onClick={() => onOpen(e.id)}
       className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-50"
     >
+      <Thumb url={poster} />
       <span className="font-semibold text-slate-800">{e.name}</span>
       {e.kind_raw !== 'normal' && <span className="text-[10px] font-semibold uppercase text-slate-400">{e.kind_raw}</span>}
       {!e.enabled && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">off</span>}

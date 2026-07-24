@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
 import { useCatalog, type ContentExercise } from '../../lib/content';
 import { validateCatalog } from './validate';
-import ExerciseTree from './ExerciseTree';
+import ExerciseTree, { Thumb } from './ExerciseTree';
 
 export default function ExercisesList() {
   const { catalog, error, loading } = useCatalog();
@@ -10,6 +11,24 @@ export default function ExercisesList() {
   const [q, setQ] = useState('');
   const [showIssues, setShowIssues] = useState(false);
   const [view, setView] = useState<'tree' | 'table'>('tree');
+  const [posters, setPosters] = useState<Map<string, string>>(new Map());
+
+  // Signed thumbnail URLs keyed by exercise id, shown as a square in the list.
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('default_exercise_media').select('exercise_id, poster_path');
+      const withPoster = (data ?? []).filter((d) => d.poster_path) as { exercise_id: string; poster_path: string }[];
+      if (!withPoster.length) return setPosters(new Map());
+      const { data: signed } = await supabase.storage
+        .from('exercise-media')
+        .createSignedUrls(withPoster.map((d) => d.poster_path), 3600);
+      const m = new Map<string, string>();
+      (signed ?? []).forEach((s, i) => {
+        if (s.signedUrl) m.set(withPoster[i].exercise_id, s.signedUrl);
+      });
+      setPosters(m);
+    })();
+  }, []);
 
   const issues = useMemo(() => (catalog ? validateCatalog(catalog) : []), [catalog]);
   const errorCount = issues.filter((i) => i.severity === 'error').length;
@@ -109,6 +128,7 @@ export default function ExercisesList() {
       {view === 'tree' ? (
         <ExerciseTree
           catalog={catalog}
+          posters={posters}
           onOpen={(id) => nav(`/exercises/${id}`)}
           onOpenMuscle={(id) => nav(`/muscles/${id}`)}
           onOpenVariation={(key) => nav(`/variations/${key}`)}
@@ -135,7 +155,7 @@ export default function ExercisesList() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map(({ e, primary, family, secondary }) => (
-              <Row key={e.id} e={e} primary={primary} family={family} secondary={secondary} onOpen={() => nav(`/exercises/${e.id}`)} />
+              <Row key={e.id} e={e} primary={primary} family={family} secondary={secondary} poster={posters.get(e.id)} onOpen={() => nav(`/exercises/${e.id}`)} />
             ))}
           </tbody>
             </table>
@@ -146,12 +166,15 @@ export default function ExercisesList() {
   );
 }
 
-function Row({ e, primary, family, secondary, onOpen }: { e: ContentExercise; primary: string; family: string; secondary: string; onOpen: () => void }) {
+function Row({ e, primary, family, secondary, poster, onOpen }: { e: ContentExercise; primary: string; family: string; secondary: string; poster?: string; onOpen: () => void }) {
   return (
     <tr className="cursor-pointer hover:bg-slate-50" onClick={onOpen}>
       <td className="px-4 py-2 font-semibold text-slate-900">
-        {e.name}
-        {!e.enabled && <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">off</span>}
+        <div className="flex items-center gap-2">
+          <Thumb url={poster} />
+          <span>{e.name}</span>
+          {!e.enabled && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">off</span>}
+        </div>
       </td>
       <td className="px-4 py-2 text-slate-500">
         {e.type_raw}
