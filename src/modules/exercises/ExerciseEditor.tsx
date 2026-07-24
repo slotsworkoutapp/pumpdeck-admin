@@ -4,6 +4,7 @@ import { v5 as uuidv5 } from 'uuid';
 import { supabase } from '../../lib/supabase';
 import { useCatalog, type ContentExercise } from '../../lib/content';
 import { Field, TextField, NumberField, TextArea, SelectField, MultiSelect, Toggle, SaveBar } from '../../components/ui';
+import ExerciseMedia from './ExerciseMedia';
 
 const NAMESPACE = '9e1b7c42-1f3a-4d58-9a2e-6c0b5d8f44a1'; // == SeedID namespace
 
@@ -137,6 +138,14 @@ export default function ExerciseEditor() {
         </Field>
 
         <Toggle checked={form.enabled} onChange={(v) => set('enabled', v)} label="Enabled (delivered to the app)" />
+
+        {isNew ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-400">
+            Save the exercise first, then reopen it to add a demo video and thumbnail.
+          </div>
+        ) : (
+          <ExerciseMedia exerciseId={id as string} />
+        )}
       </div>
 
       <SaveBar onSave={save} onCancel={() => nav('/exercises')} onDelete={isNew ? undefined : del} saving={saving} error={error} />
