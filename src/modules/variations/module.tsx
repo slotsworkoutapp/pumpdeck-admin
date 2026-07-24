@@ -6,6 +6,7 @@ export const variationsModule: AdminModule = {
   id: 'variations',
   label: 'Variations',
   icon: <StackIcon />,
+  hidden: true, // reached by clicking a variation in the Exercises tree
   routes: [
     { element: <VariationsList /> },
     { path: 'new', element: <VariationEditor /> },

@@ -15,4 +15,5 @@ export interface AdminModule {
   label: string; // sidebar label
   icon: ReactNode; // sidebar icon
   routes: ModuleRoute[]; // rendered under /<id>
+  hidden?: boolean; // keep routes registered but omit from the sidebar
 }

@@ -95,7 +95,12 @@ export default function ExercisesList() {
       )}
 
       {view === 'tree' ? (
-        <ExerciseTree catalog={catalog} onOpen={(id) => nav(`/exercises/${id}`)} />
+        <ExerciseTree
+          catalog={catalog}
+          onOpen={(id) => nav(`/exercises/${id}`)}
+          onOpenMuscle={(id) => nav(`/muscles/${id}`)}
+          onOpenVariation={(key) => nav(`/variations/${key}`)}
+        />
       ) : (
         <>
           <input

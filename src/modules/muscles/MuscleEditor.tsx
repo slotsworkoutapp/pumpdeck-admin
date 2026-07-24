@@ -57,7 +57,7 @@ export default function MuscleEditor() {
     });
     setSaving(false);
     if (error) setError(error.message);
-    else nav('/muscles');
+    else nav('/exercises');
   }
 
   async function del() {
@@ -66,7 +66,7 @@ export default function MuscleEditor() {
     const { error } = await supabase.from('content_muscles').delete().eq('id', id);
     setSaving(false);
     if (error) setError(error.message);
-    else nav('/muscles');
+    else nav('/exercises');
   }
 
   if (loading) return <div className="p-8 text-slate-400">Loading…</div>;
@@ -104,7 +104,7 @@ export default function MuscleEditor() {
         )}
         <Toggle checked={form.enabled} onChange={(v) => set('enabled', v)} label="Enabled" />
       </div>
-      <SaveBar onSave={save} onCancel={() => nav('/muscles')} onDelete={isNew ? undefined : del} saving={saving} error={error} />
+      <SaveBar onSave={save} onCancel={() => nav('/exercises')} onDelete={isNew ? undefined : del} saving={saving} error={error} />
     </div>
   );
 }

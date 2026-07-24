@@ -50,7 +50,7 @@ export default function VariationEditor() {
     });
     setSaving(false);
     if (error) setError(error.message);
-    else nav('/variations');
+    else nav('/exercises');
   }
 
   async function del() {
@@ -59,7 +59,7 @@ export default function VariationEditor() {
     const { error } = await supabase.from('content_families').delete().eq('key', key);
     setSaving(false);
     if (error) setError(error.message);
-    else nav('/variations');
+    else nav('/exercises');
   }
 
   if (loading) return <div className="p-8 text-slate-400">Loading…</div>;
@@ -106,7 +106,7 @@ export default function VariationEditor() {
           </div>
         )}
       </div>
-      <SaveBar onSave={save} onCancel={() => nav('/variations')} onDelete={isNew ? undefined : del} saving={saving} error={error} />
+      <SaveBar onSave={save} onCancel={() => nav('/exercises')} onDelete={isNew ? undefined : del} saving={saving} error={error} />
     </div>
   );
 }

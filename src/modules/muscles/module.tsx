@@ -6,6 +6,7 @@ export const musclesModule: AdminModule = {
   id: 'muscles',
   label: 'Muscles',
   icon: <AnatomyIcon />,
+  hidden: true, // reached by clicking a muscle in the Exercises tree
   routes: [
     { element: <MusclesList /> },
     { path: 'new', element: <MuscleEditor /> },

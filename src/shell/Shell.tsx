@@ -12,7 +12,7 @@ export default function Shell() {
           <span className="font-bold">PumpDeck Admin</span>
         </div>
         <nav className="flex-1 px-2">
-          {modules.map((m) => (
+          {modules.filter((m) => !m.hidden).map((m) => (
             <NavLink
               key={m.id}
               to={`/${m.id}`}

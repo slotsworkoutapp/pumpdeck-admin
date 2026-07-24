@@ -10,7 +10,17 @@ interface FamNode { key: string; name: string; sort: number; exercises: ContentE
 interface MuscleNode { id: string; name: string; sort: number; families: FamNode[]; loose: ContentExercise[] }
 interface GroupNode { key: string; label: string; count: number; muscles: MuscleNode[] }
 
-export default function ExerciseTree({ catalog, onOpen }: { catalog: Catalog; onOpen: (id: string) => void }) {
+export default function ExerciseTree({
+  catalog,
+  onOpen,
+  onOpenMuscle,
+  onOpenVariation,
+}: {
+  catalog: Catalog;
+  onOpen: (id: string) => void;
+  onOpenMuscle: (id: string) => void;
+  onOpenVariation: (key: string) => void;
+}) {
   const groups = useMemo<GroupNode[]>(() => {
     const byName = (a: ContentExercise, b: ContentExercise) => a.name.localeCompare(b.name);
 
@@ -70,15 +80,29 @@ export default function ExerciseTree({ catalog, onOpen }: { catalog: Catalog; on
           <div className="divide-y divide-slate-100">
             {g.muscles.map((m) => (
               <div key={m.id} className="px-3 py-2">
-                <div className="mb-1 px-1 text-sm font-bold text-slate-900">{m.name}</div>
+                {m.id === '_none' ? (
+                  <div className="mb-1 px-1 text-sm font-bold text-slate-900">{m.name}</div>
+                ) : (
+                  <button
+                    onClick={() => onOpenMuscle(m.id)}
+                    className="group mb-1 flex items-center gap-1.5 rounded px-1 text-sm font-bold text-slate-900 hover:text-indigo-600"
+                  >
+                    {m.name}
+                    <EditHint />
+                  </button>
+                )}
                 <div className="space-y-2">
                   {m.families.map((f) => (
                     <div key={f.key}>
-                      <div className="mb-0.5 flex items-center gap-1.5 px-1">
+                      <button
+                        onClick={() => onOpenVariation(f.key)}
+                        className="group mb-0.5 flex items-center gap-1.5 rounded px-1 hover:bg-indigo-50"
+                      >
                         <VariationIcon />
                         <span className="text-xs font-bold uppercase tracking-wide text-indigo-600">{f.name}</span>
                         <span className="text-[10px] font-semibold text-slate-400">variation · {f.exercises.length}</span>
-                      </div>
+                        <EditHint />
+                      </button>
                       <div className="ml-3 border-l-2 border-slate-100 pl-2">
                         {f.exercises.map((e) => (
                           <ExRow key={e.id} e={e} secondary={secondaryOf(e)} onOpen={onOpen} />
@@ -115,6 +139,15 @@ function ExRow({ e, secondary, onOpen }: { e: ContentExercise; secondary: string
       {secondary && <span className="truncate text-xs text-slate-400">· {secondary}</span>}
       <span className="ml-auto shrink-0 tabular-nums text-xs text-slate-400">{e.default_rest_seconds}s</span>
     </button>
+  );
+}
+
+// A faint pencil that appears on hover, hinting the node is editable.
+function EditHint() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-3 shrink-0 text-slate-300 opacity-0 transition group-hover:opacity-100" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
