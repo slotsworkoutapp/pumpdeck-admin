@@ -55,8 +55,9 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
   const adjusted = recipe.slots.map((s) => {
     const sets = Math.max(1, s.base_sets + goal.set_shift);
     const repLow = Math.max(3, s.rep_low + goal.rep_shift);
-    // Round rest to a clean 15s increment — a raw ×1.6 gives ugly values (288s).
-    const rest = Math.round((s.rest_seconds * goal.rest_multiplier) / 15) * 15;
+    // Round rest to a clean 15s increment and cap at 3:00 — the most rest a set
+    // should ever get. (A raw multiplier gives ugly, over-long values like 288s.)
+    const rest = Math.min(180, Math.round((s.rest_seconds * goal.rest_multiplier) / 15) * 15);
     return {
       src: s,
       sets,
