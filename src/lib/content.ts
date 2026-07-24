@@ -47,6 +47,40 @@ export interface Catalog {
   familiesByKey: Map<string, ContentFamily>;
 }
 
+// --- Split templates (program generation v2) ---
+export interface SplitDay {
+  weekday: number; // 1=Sun … 7=Sat
+  day_name: string;
+  day_type: string | null;
+  groups: string[];
+}
+export interface ContentSplit {
+  key: string;
+  display_name: string;
+  blurb: string | null;
+  min_days: number;
+  max_days: number;
+  day_assignments: SplitDay[];
+  sort_order: number;
+  enabled: boolean;
+}
+
+export function useSplits() {
+  const [splits, setSplits] = useState<ContentSplit[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase.from('content_split_templates').select('*').order('sort_order');
+      if (error) setError(error.message);
+      else setSplits((data ?? []) as ContentSplit[]);
+      setLoading(false);
+    })();
+  }, []);
+  return { splits, error, loading };
+}
+
 // --- Day recipes (program generation v2) ---
 export interface ContentSlot {
   id?: string;
