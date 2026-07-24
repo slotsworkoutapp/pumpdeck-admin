@@ -43,6 +43,15 @@ export default function GoalEditor() {
     else nav('/goals');
   }
 
+  async function del() {
+    if (!confirm(`Delete the "${displayName}" goal?`)) return;
+    setSaving(true);
+    const { error } = await supabase.from('content_goal_profiles').delete().eq('goal_key', key);
+    setSaving(false);
+    if (error) setError(error.message);
+    else nav('/goals');
+  }
+
   if (loading) return <div className="p-8 text-slate-400">Loading…</div>;
 
   return (
@@ -64,7 +73,7 @@ export default function GoalEditor() {
         </Field>
         <Toggle checked={enabled} onChange={setEnabled} label="Enabled" />
       </div>
-      <SaveBar onSave={save} onCancel={() => nav('/goals')} saving={saving} error={error} />
+      <SaveBar onSave={save} onCancel={() => nav('/goals')} onDelete={del} saving={saving} error={error} />
     </div>
   );
 }

@@ -13,8 +13,11 @@ export const TIME_BRACKETS = [
   { key: 'over90', label: '90+ min', ceiling: 105 },
 ];
 
-// Sets a day can hold in the session (matches the app: minutes ÷ 2.5).
-export const capacityFor = (ceilingMinutes: number) => Math.floor(ceilingMinutes / 2.5);
+// Estimated wall-clock for a slot, counting REST (the big driver). Each working
+// set takes ~40s of effort plus its rest period. This is why strength (long
+// rests) fits fewer exercises than hypertrophy in the same session.
+const SET_WORK_SECONDS = 40;
+export const slotMinutes = (sets: number, rest: number) => (sets * (SET_WORK_SECONDS + rest)) / 60;
 
 export interface GenSlot {
   label: string; // resolved variation / muscle name
@@ -31,6 +34,7 @@ export interface GenDay {
   dayType: string | null;
   slots: GenSlot[];
   dropped: number; // how many recipe slots were trimmed for time
+  estMinutes: number; // estimated session length of the kept slots
   note?: string; // e.g. no recipe
 }
 
@@ -41,43 +45,49 @@ function slotLabel(s: ContentSlot, catalog: Catalog): string {
   return catalog.familiesByKey.get(s.family_key ?? '')?.display_name ?? s.family_key ?? '?';
 }
 
-// Apply goal shifts + trim to capacity; return surviving slots in day order.
-function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: ContentGoal, capacity: number, catalog: Catalog): GenDay {
-  const base: GenDay = { weekday: day.weekday, dayName: day.day_name, dayType: day.day_type, slots: [], dropped: 0 };
+// Apply goal shifts + fill the time budget; return surviving slots in day order.
+function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: ContentGoal, budgetMinutes: number, catalog: Catalog): GenDay {
+  const base: GenDay = { weekday: day.weekday, dayName: day.day_name, dayType: day.day_type, slots: [], dropped: 0, estMinutes: 0 };
   if (!recipe) {
     return { ...base, note: day.day_type ? `No "${day.day_type}" recipe yet` : 'No recipe assigned' };
   }
-  // Goal-adjusted copy of each slot.
-  const adjusted = recipe.slots.map((s) => ({
-    src: s,
-    sets: Math.max(1, s.base_sets + goal.set_shift),
-    repLow: Math.max(3, s.rep_low + goal.rep_shift),
-    repHigh: Math.max(Math.max(3, s.rep_low + goal.rep_shift), s.rep_high + goal.rep_shift),
-    rest: Math.round(s.rest_seconds * goal.rest_multiplier),
-  }));
-  // Trim: keep by priority (then order) while total sets fit; stop at first overflow.
+  // Goal-adjusted copy of each slot (+ its estimated minutes, rest included).
+  const adjusted = recipe.slots.map((s) => {
+    const sets = Math.max(1, s.base_sets + goal.set_shift);
+    const repLow = Math.max(3, s.rep_low + goal.rep_shift);
+    const rest = Math.round(s.rest_seconds * goal.rest_multiplier);
+    return {
+      src: s,
+      sets,
+      repLow,
+      repHigh: Math.max(repLow, s.rep_high + goal.rep_shift),
+      rest,
+      mins: slotMinutes(sets, rest),
+    };
+  });
+  // Fill the time budget: keep by priority (then order) until the next slot would
+  // overrun the session. Longer rests (strength) eat the budget faster.
   const byPriority = [...adjusted].sort((a, b) => a.src.priority - b.src.priority || a.src.sort_order - b.src.sort_order);
   const keep = new Set<ContentSlot>();
-  let total = 0;
+  let used = 0;
   for (const a of byPriority) {
-    if (total + a.sets <= capacity) {
+    if (used + a.mins <= budgetMinutes) {
       keep.add(a.src);
-      total += a.sets;
+      used += a.mins;
     } else break;
   }
-  const slots: GenSlot[] = adjusted
-    .filter((a) => keep.has(a.src))
-    .sort((x, y) => x.src.sort_order - y.src.sort_order)
-    .map((a) => ({
-      label: slotLabel(a.src, catalog),
-      kind: a.src.slot_kind,
-      sets: a.sets,
-      repLow: a.repLow,
-      repHigh: a.repHigh,
-      rest: a.rest,
-      priority: a.src.priority,
-    }));
-  return { ...base, slots, dropped: recipe.slots.length - slots.length };
+  const kept = adjusted.filter((a) => keep.has(a.src)).sort((x, y) => x.src.sort_order - y.src.sort_order);
+  const slots: GenSlot[] = kept.map((a) => ({
+    label: slotLabel(a.src, catalog),
+    kind: a.src.slot_kind,
+    sets: a.sets,
+    repLow: a.repLow,
+    repHigh: a.repHigh,
+    rest: a.rest,
+    priority: a.src.priority,
+  }));
+  const estMinutes = Math.round(kept.reduce((t, a) => t + a.mins, 0));
+  return { ...base, slots, dropped: recipe.slots.length - slots.length, estMinutes };
 }
 
 export function generateProgram(
@@ -88,10 +98,9 @@ export function generateProgram(
   catalog: Catalog
 ): GenDay[] {
   const recipeByType = new Map(recipes.map((r) => [r.day_type, r]));
-  const capacity = capacityFor(ceilingMinutes);
   return [...split.day_assignments]
     .sort((a, b) => a.weekday - b.weekday)
-    .map((d) => buildDay(d, d.day_type ? recipeByType.get(d.day_type) : undefined, goal, capacity, catalog));
+    .map((d) => buildDay(d, d.day_type ? recipeByType.get(d.day_type) : undefined, goal, ceilingMinutes, catalog));
 }
 
 export const weekdayLabel = (w: number) => WD[w - 1] ?? '?';

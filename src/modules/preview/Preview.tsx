@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSplits, useRecipes, useGoals, useCatalog } from '../../lib/content';
-import { generateProgram, capacityFor, weekdayLabel, TIME_BRACKETS, type GenDay } from '../../lib/generate';
+import { generateProgram, weekdayLabel, TIME_BRACKETS, type GenDay } from '../../lib/generate';
 import { SelectField } from '../../components/ui';
 
 export default function Preview() {
@@ -59,7 +59,10 @@ export default function Preview() {
         </label>
       </div>
 
-      <p className="mb-3 text-xs text-slate-400">Set budget per day: <strong>{capacityFor(ceiling)}</strong> sets ({ceiling} min ÷ 2.5)</p>
+      <p className="mb-3 text-xs text-slate-400">
+        Time budget per session: <strong>{ceiling} min</strong> — filled from each day's recipe by priority, counting rest.
+        Longer rests (strength) fit fewer exercises than short rests (hypertrophy) in the same time.
+      </p>
 
       {!split ? (
         <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-slate-400">No split for {days} days.</div>
@@ -82,7 +85,7 @@ function DayCard({ day }: { day: GenDay }) {
         <span className="font-bold text-slate-900">
           <span className="text-slate-400">{weekdayLabel(day.weekday)}</span> {day.dayName}
         </span>
-        {day.slots.length > 0 && <span className="text-xs font-semibold text-slate-400">{totalSets} sets</span>}
+        {day.slots.length > 0 && <span className="text-xs font-semibold text-slate-400">{day.slots.length} ex · {totalSets} sets · ~{day.estMinutes}m</span>}
       </div>
       {day.note ? (
         <div className="px-4 py-3 text-sm text-amber-600">{day.note}</div>
