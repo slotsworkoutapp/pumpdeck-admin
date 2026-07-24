@@ -115,6 +115,10 @@ export default function ExerciseEditor() {
           <MultiSelect selected={form.secondary_muscle_ids} onChange={(v) => set('secondary_muscle_ids', v)} options={muscleOptions} />
         </Field>
 
+        <Field label="Additional primary muscles" hint="Extra 'home' muscles for dual-movers (e.g. Hammer Curl → Biceps). Usually empty.">
+          <MultiSelect selected={form.additional_primary_muscle_ids} onChange={(v) => set('additional_primary_muscle_ids', v)} options={muscleOptions} />
+        </Field>
+
         <Field label="Variation (movement family)" hint="Exercises sharing a family are interchangeable in a program.">
           <SelectField value={form.movement_family_key ?? ''} onChange={(v) => set('movement_family_key', v || null)} options={familyOptions} placeholder="— none —" />
         </Field>
