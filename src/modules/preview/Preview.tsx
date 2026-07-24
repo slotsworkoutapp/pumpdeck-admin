@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSplits, useRecipes, useGoals, useCatalog } from '../../lib/content';
-import { generateProgram, weekdayLabel, TIME_BRACKETS, type GenDay } from '../../lib/generate';
+import { generateProgram, weekdayLabel, type GenDay } from '../../lib/generate';
 import { SelectField } from '../../components/ui';
 
 export default function Preview() {
@@ -10,7 +10,7 @@ export default function Preview() {
   const { catalog, loading: lc } = useCatalog();
 
   const [days, setDays] = useState(3);
-  const [bracket, setBracket] = useState('to60');
+  const [minutes, setMinutes] = useState(60);
   const [splitKey, setSplitKey] = useState('');
   const [goalKey, setGoalKey] = useState('');
 
@@ -30,8 +30,7 @@ export default function Preview() {
 
   const split = available.find((s) => s.key === splitKey);
   const goal = goals.find((g) => g.goal_key === goalKey);
-  const ceiling = TIME_BRACKETS.find((b) => b.key === bracket)?.ceiling ?? 60;
-  const program = split && goal ? generateProgram(split, recipes, goal, ceiling, catalog) : [];
+  const program = split && goal ? generateProgram(split, recipes, goal, minutes, catalog) : [];
 
   return (
     <div className="p-6">
@@ -40,14 +39,10 @@ export default function Preview() {
         Exactly what a new user gets for these answers — split × goal × time. Tune recipes/goals and refresh to see changes.
       </p>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
         <label className="block">
           <span className="mb-1 block text-xs font-semibold uppercase text-slate-500">Days / week</span>
           <SelectField value={String(days)} onChange={(v) => setDays(parseInt(v, 10))} options={[2, 3, 4, 5, 6, 7].map((d) => ({ value: String(d), label: `${d} days` }))} />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-xs font-semibold uppercase text-slate-500">Session length</span>
-          <SelectField value={bracket} onChange={setBracket} options={TIME_BRACKETS.map((b) => ({ value: b.key, label: b.label }))} />
         </label>
         <label className="block">
           <span className="mb-1 block text-xs font-semibold uppercase text-slate-500">Split</span>
@@ -59,10 +54,25 @@ export default function Preview() {
         </label>
       </div>
 
-      <p className="mb-3 text-xs text-slate-400">
-        Time budget per session: <strong>{ceiling} min</strong> — filled from each day's recipe by priority, counting rest.
-        Longer rests (strength) fit fewer exercises than short rests (hypertrophy) in the same time.
-      </p>
+      <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="mb-2 flex items-baseline justify-between">
+          <span className="text-xs font-semibold uppercase text-slate-500">Session length</span>
+          <span className="text-lg font-bold tabular-nums text-slate-900">{minutes} min</span>
+        </div>
+        <input
+          type="range"
+          min={30}
+          max={90}
+          step={1}
+          value={minutes}
+          onChange={(e) => setMinutes(parseInt(e.target.value, 10))}
+          className="w-full accent-indigo-600"
+        />
+        <div className="mt-1 flex justify-between text-[10px] text-slate-400"><span>30 min</span><span>90 min</span></div>
+        <p className="mt-2 text-xs text-slate-400">
+          Each day's recipe is filled by priority until this budget is used, counting rest — so strength (long rests) fits fewer exercises than hypertrophy in the same time.
+        </p>
+      </div>
 
       {!split ? (
         <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-slate-400">No split for {days} days.</div>
