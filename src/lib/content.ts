@@ -47,6 +47,65 @@ export interface Catalog {
   familiesByKey: Map<string, ContentFamily>;
 }
 
+// --- Day recipes (program generation v2) ---
+export interface ContentSlot {
+  id?: string;
+  recipe_id?: string;
+  sort_order: number;
+  slot_kind: 'variation' | 'muscle';
+  family_key: string | null;
+  muscle_id: string | null;
+  base_sets: number;
+  rep_low: number;
+  rep_high: number;
+  rest_seconds: number;
+  priority: number;
+}
+export interface ContentRecipe {
+  id: string;
+  day_type: string;
+  display_name: string;
+  sort_order: number;
+  enabled: boolean;
+  slots: ContentSlot[];
+}
+
+export function useRecipes() {
+  const [recipes, setRecipes] = useState<ContentRecipe[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const [rec, sl] = await Promise.all([
+        supabase.from('content_day_recipes').select('*').order('sort_order'),
+        supabase.from('content_day_recipe_slots').select('*').order('sort_order'),
+      ]);
+      const err = rec.error || sl.error;
+      if (err) {
+        setError(err.message);
+        setLoading(false);
+        return;
+      }
+      const slotsByRecipe = new Map<string, ContentSlot[]>();
+      for (const s of (sl.data ?? []) as ContentSlot[]) {
+        if (!slotsByRecipe.has(s.recipe_id!)) slotsByRecipe.set(s.recipe_id!, []);
+        slotsByRecipe.get(s.recipe_id!)!.push(s);
+      }
+      setRecipes(
+        ((rec.data ?? []) as Omit<ContentRecipe, 'slots'>[]).map((r) => ({
+          ...r,
+          slots: (slotsByRecipe.get(r.id) ?? []).sort((a, b) => a.sort_order - b.sort_order),
+        }))
+      );
+      setLoading(false);
+    })();
+  }, []);
+
+  return { recipes, error, loading };
+}
+
 export function useCatalog() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState<string | null>(null);

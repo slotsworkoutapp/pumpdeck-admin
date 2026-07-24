@@ -1,0 +1,201 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
+import { useRecipes, useCatalog, type ContentSlot } from '../../lib/content';
+import { Field, TextField, SelectField, Toggle, SaveBar } from '../../components/ui';
+
+const blankSlot = (order: number): ContentSlot => ({
+  sort_order: order,
+  slot_kind: 'variation',
+  family_key: null,
+  muscle_id: null,
+  base_sets: 3,
+  rep_low: 8,
+  rep_high: 12,
+  rest_seconds: 90,
+  priority: 2,
+});
+
+export default function RecipeEditor() {
+  const { id } = useParams();
+  const isNew = id === 'new';
+  const nav = useNavigate();
+  const { recipes, loading } = useRecipes();
+  const { catalog } = useCatalog();
+
+  const [dayType, setDayType] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [sortOrder, setSortOrder] = useState(999);
+  const [enabled, setEnabled] = useState(true);
+  const [slots, setSlots] = useState<ContentSlot[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isNew || !recipes) return;
+    const r = recipes.find((x) => x.id === id);
+    if (r) {
+      setDayType(r.day_type);
+      setDisplayName(r.display_name);
+      setSortOrder(r.sort_order);
+      setEnabled(r.enabled);
+      setSlots(r.slots.map((s) => ({ ...s })));
+    }
+  }, [recipes, id, isNew]);
+
+  const familyOptions = useMemo(
+    () => (catalog?.families ?? []).map((f) => ({ value: f.key, label: `${f.display_name}  (${f.key})` })),
+    [catalog]
+  );
+  const muscleOptions = useMemo(
+    () => (catalog?.muscles ?? []).map((m) => ({ value: m.id, label: m.name })),
+    [catalog]
+  );
+
+  const setSlot = (i: number, patch: Partial<ContentSlot>) =>
+    setSlots((s) => s.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const move = (i: number, dir: -1 | 1) =>
+    setSlots((s) => {
+      const j = i + dir;
+      if (j < 0 || j >= s.length) return s;
+      const next = [...s];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+
+  async function save() {
+    setError(null);
+    if (!dayType.trim()) return setError('Day type is required (e.g. push).');
+    if (!displayName.trim()) return setError('Display name is required.');
+    setSaving(true);
+    const recipeId = isNew ? crypto.randomUUID() : (id as string);
+
+    const { error: rErr } = await supabase.from('content_day_recipes').upsert({
+      id: recipeId,
+      day_type: dayType.trim(),
+      display_name: displayName.trim(),
+      sort_order: sortOrder,
+      enabled,
+    });
+    if (rErr) {
+      setSaving(false);
+      return setError(rErr.message);
+    }
+    // Replace the recipe's slots (simple + safe for a short list).
+    await supabase.from('content_day_recipe_slots').delete().eq('recipe_id', recipeId);
+    const rows = slots.map((s, i) => ({
+      recipe_id: recipeId,
+      sort_order: i,
+      slot_kind: s.slot_kind,
+      family_key: s.slot_kind === 'variation' ? s.family_key : null,
+      muscle_id: s.slot_kind === 'muscle' ? s.muscle_id : null,
+      base_sets: s.base_sets,
+      rep_low: s.rep_low,
+      rep_high: s.rep_high,
+      rest_seconds: s.rest_seconds,
+      priority: s.priority,
+    }));
+    if (rows.length) {
+      const { error: sErr } = await supabase.from('content_day_recipe_slots').insert(rows);
+      if (sErr) {
+        setSaving(false);
+        return setError(sErr.message);
+      }
+    }
+    setSaving(false);
+    nav('/recipes');
+  }
+
+  async function del() {
+    if (!confirm(`Delete recipe "${displayName}"?`)) return;
+    setSaving(true);
+    const { error } = await supabase.from('content_day_recipes').delete().eq('id', id);
+    setSaving(false);
+    if (error) setError(error.message);
+    else nav('/recipes');
+  }
+
+  if (loading) return <div className="p-8 text-slate-400">Loading…</div>;
+
+  return (
+    <div className="mx-auto max-w-3xl p-6">
+      <h1 className="mb-1 text-2xl font-bold text-slate-900">{isNew ? 'New recipe' : displayName || 'Edit recipe'}</h1>
+      <p className="mb-6 text-sm text-slate-500">Priority 1 = kept even in short sessions; higher = trimmed first when time is tight.</p>
+
+      <div className="mb-6 grid grid-cols-3 gap-4">
+        <Field label="Day type" hint="e.g. push, pull, legs">
+          <TextField value={dayType} onChange={(e) => setDayType(e.target.value)} disabled={!isNew} placeholder="push" />
+        </Field>
+        <Field label="Display name">
+          <TextField value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Push" />
+        </Field>
+        <Field label="Sort order">
+          <TextField type="number" value={String(sortOrder)} onChange={(e) => setSortOrder(parseInt(e.target.value || '0', 10))} />
+        </Field>
+      </div>
+
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-bold text-slate-700">Slots</span>
+        <button
+          onClick={() => setSlots((s) => [...s, blankSlot(s.length)])}
+          className="rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+        >
+          + Add slot
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {slots.map((s, i) => (
+          <div key={i} className="rounded-lg border border-slate-200 bg-white p-2">
+            <div className="flex items-center gap-2">
+              <div className="flex flex-col">
+                <button onClick={() => move(i, -1)} className="px-1 text-xs text-slate-400 hover:text-slate-900">▲</button>
+                <button onClick={() => move(i, 1)} className="px-1 text-xs text-slate-400 hover:text-slate-900">▼</button>
+              </div>
+              <div className="w-28">
+                <SelectField value={s.slot_kind} onChange={(v) => setSlot(i, { slot_kind: v as ContentSlot['slot_kind'] })} options={[{ value: 'variation', label: 'Variation' }, { value: 'muscle', label: 'Muscle' }]} />
+              </div>
+              <div className="flex-1">
+                {s.slot_kind === 'variation' ? (
+                  <SelectField value={s.family_key ?? ''} onChange={(v) => setSlot(i, { family_key: v || null })} options={familyOptions} placeholder="— pick a variation —" />
+                ) : (
+                  <SelectField value={s.muscle_id ?? ''} onChange={(v) => setSlot(i, { muscle_id: v || null })} options={muscleOptions} placeholder="— pick a muscle —" />
+                )}
+              </div>
+              <button onClick={() => setSlots((sl) => sl.filter((_, j) => j !== i))} className="px-2 text-sm text-red-500 hover:text-red-700">✕</button>
+            </div>
+            <div className="mt-2 flex items-center gap-3 pl-9 text-xs text-slate-500">
+              <Num label="sets" value={s.base_sets} onChange={(v) => setSlot(i, { base_sets: v })} />
+              <Num label="reps" value={s.rep_low} onChange={(v) => setSlot(i, { rep_low: v })} />
+              <span>–</span>
+              <Num label="" value={s.rep_high} onChange={(v) => setSlot(i, { rep_high: v })} />
+              <Num label="rest(s)" value={s.rest_seconds} onChange={(v) => setSlot(i, { rest_seconds: v })} />
+              <Num label="priority" value={s.priority} onChange={(v) => setSlot(i, { priority: v })} />
+            </div>
+          </div>
+        ))}
+        {slots.length === 0 && <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">No slots yet — add one.</div>}
+      </div>
+
+      <div className="mt-4">
+        <Toggle checked={enabled} onChange={setEnabled} label="Enabled" />
+      </div>
+
+      <SaveBar onSave={save} onCancel={() => nav('/recipes')} onDelete={isNew ? undefined : del} saving={saving} error={error} />
+    </div>
+  );
+}
+
+function Num({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <label className="flex items-center gap-1">
+      {label && <span className="text-slate-400">{label}</span>}
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(parseInt(e.target.value || '0', 10))}
+        className="w-14 rounded border border-slate-300 px-1.5 py-1 text-sm outline-none focus:border-slate-500"
+      />
+    </label>
+  );
+}
