@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useRecipes, useCatalog, type ContentSlot } from '../../lib/content';
 import { Field, TextField, SelectField, Toggle, SaveBar } from '../../components/ui';
+import { GroupMap } from '../../components/GroupMap';
 
 const blankSlot = (order: number): ContentSlot => ({
   sort_order: order,
@@ -43,14 +44,23 @@ export default function RecipeEditor() {
     }
   }, [recipes, id, isNew]);
 
+  // Grouped + prefixed by muscle group so a variation is easy to find/identify.
   const familyOptions = useMemo(
-    () => (catalog?.families ?? []).map((f) => ({ value: f.key, label: `${f.display_name}  (${f.key})` })),
+    () =>
+      [...(catalog?.families ?? [])]
+        .sort((a, b) => (a.muscle_group_raw ?? '').localeCompare(b.muscle_group_raw ?? '') || a.display_name.localeCompare(b.display_name))
+        .map((f) => ({ value: f.key, label: `${f.muscle_group_raw ?? '?'} · ${f.display_name}` })),
     [catalog]
   );
   const muscleOptions = useMemo(
-    () => (catalog?.muscles ?? []).map((m) => ({ value: m.id, label: m.name })),
+    () =>
+      [...(catalog?.muscles ?? [])]
+        .sort((a, b) => a.group_raw.localeCompare(b.group_raw) || a.name.localeCompare(b.name))
+        .map((m) => ({ value: m.id, label: `${m.group_raw} · ${m.name}` })),
     [catalog]
   );
+  const slotGroup = (s: ContentSlot): string | null =>
+    !catalog ? null : s.slot_kind === 'muscle' ? catalog.musclesById.get(s.muscle_id ?? '')?.group_raw ?? null : catalog.familiesByKey.get(s.family_key ?? '')?.muscle_group_raw ?? null;
 
   const setSlot = (i: number, patch: Partial<ContentSlot>) =>
     setSlots((s) => s.map((x, j) => (j === i ? { ...x, ...patch } : x)));
@@ -152,6 +162,7 @@ export default function RecipeEditor() {
                 <button onClick={() => move(i, -1)} className="px-1 text-xs text-slate-400 hover:text-slate-900">▲</button>
                 <button onClick={() => move(i, 1)} className="px-1 text-xs text-slate-400 hover:text-slate-900">▼</button>
               </div>
+              <GroupMap group={slotGroup(s)} className="size-8 shrink-0 object-contain" />
               <div className="w-28">
                 <SelectField value={s.slot_kind} onChange={(v) => setSlot(i, { slot_kind: v as ContentSlot['slot_kind'] })} options={[{ value: 'variation', label: 'Variation' }, { value: 'muscle', label: 'Muscle' }]} />
               </div>

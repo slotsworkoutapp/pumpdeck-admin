@@ -1,17 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { useSplits, useRecipes, type SplitDay } from '../../lib/content';
-import { Field, TextField, NumberField, SelectField, MultiSelect, Toggle, SaveBar } from '../../components/ui';
+import { useSplits, useRecipes, useCatalog, type SplitDay, type ContentSlot, type Catalog } from '../../lib/content';
+import { Field, TextField, NumberField, SelectField, Toggle, SaveBar } from '../../components/ui';
+import { GroupMap } from '../../components/GroupMap';
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const GROUPS = ['chest', 'back', 'shoulders', 'legs', 'core', 'biceps', 'triceps', 'forearms'];
+
+const slotGroup = (s: ContentSlot, c: Catalog): string | null =>
+  s.slot_kind === 'muscle' ? c.musclesById.get(s.muscle_id ?? '')?.group_raw ?? null : c.familiesByKey.get(s.family_key ?? '')?.muscle_group_raw ?? null;
+const slotLabel = (s: ContentSlot, c: Catalog): string =>
+  s.slot_kind === 'muscle' ? c.musclesById.get(s.muscle_id ?? '')?.name ?? 'Muscle' : c.familiesByKey.get(s.family_key ?? '')?.display_name ?? '?';
 
 export default function SplitEditor() {
   const { key } = useParams();
   const nav = useNavigate();
   const { splits, loading } = useSplits();
   const { recipes } = useRecipes();
+  const { catalog } = useCatalog();
+  const recipeByType = useMemo(() => new Map((recipes ?? []).map((r) => [r.day_type, r])), [recipes]);
 
   const [displayName, setDisplayName] = useState('');
   const [blurb, setBlurb] = useState('');
@@ -109,8 +117,35 @@ export default function SplitEditor() {
               </div>
               <button onClick={() => setAssignments((a) => a.filter((_, j) => j !== i))} className="px-2 text-sm text-red-500 hover:text-red-700">✕</button>
             </div>
-            <div className="mt-2">
-              <MultiSelect selected={d.groups} onChange={(v) => setDay(i, { groups: v })} options={GROUPS.map((g) => ({ value: g, label: g }))} />
+
+            {/* What the selected recipe actually builds */}
+            {d.day_type && recipeByType.get(d.day_type) && catalog && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {recipeByType.get(d.day_type)!.slots.map((sl, k) => (
+                  <span key={k} className="flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600">
+                    <GroupMap group={slotGroup(sl, catalog)} className="size-4 object-contain" />
+                    {slotLabel(sl, catalog)}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Muscle groups this day covers — click the maps to toggle */}
+            <div className="mt-2 flex flex-wrap gap-1">
+              {GROUPS.map((g) => {
+                const on = d.groups.includes(g);
+                return (
+                  <button
+                    key={g}
+                    onClick={() => setDay(i, { groups: on ? d.groups.filter((x) => x !== g) : [...d.groups, g] })}
+                    title={g}
+                    className={`flex flex-col items-center rounded-lg border px-1.5 py-1 transition ${on ? 'border-slate-300 bg-white' : 'border-transparent opacity-30 hover:opacity-60'}`}
+                  >
+                    <GroupMap group={g} className="size-8 object-contain" />
+                    <span className="text-[9px] font-semibold capitalize text-slate-500">{g}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         ))}
