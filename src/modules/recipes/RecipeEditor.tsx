@@ -21,7 +21,7 @@ export default function RecipeEditor() {
   const { id } = useParams();
   const isNew = id === 'new';
   const nav = useNavigate();
-  const { recipes, loading } = useRecipes();
+  const { recipes, loading, reload } = useRecipes();
   const { catalog } = useCatalog();
 
   const [dayType, setDayType] = useState('');
@@ -116,6 +116,45 @@ export default function RecipeEditor() {
     nav('/recipes');
   }
 
+  // Fork this recipe into a new day_type (with all its slots) so a split can use
+  // a customized copy without touching the shared original. Jumps into the copy.
+  async function duplicate() {
+    const suggested = `${dayType}_copy`;
+    const input = window.prompt('New recipe key (day_type) — lowercase letters, numbers, underscores. This is what a split points at:', suggested);
+    if (input == null) return;
+    const nt = input.trim();
+    if (!/^[a-z][a-z0-9_]*$/.test(nt)) return setError('Key must be lowercase letters/numbers/underscores, starting with a letter (e.g. push_myvariant).');
+    if ((recipes ?? []).some((r) => r.day_type === nt)) return setError(`Key "${nt}" already exists.`);
+
+    setSaving(true);
+    setError(null);
+    const newId = crypto.randomUUID();
+    const maxSort = Math.max(0, ...(recipes ?? []).map((r) => r.sort_order));
+    const { error: rErr } = await supabase.from('content_day_recipes').insert({
+      id: newId, day_type: nt, display_name: `${displayName || dayType} copy`, sort_order: maxSort + 1, enabled: true,
+    });
+    if (rErr) { setSaving(false); return setError(rErr.message); }
+    const rows = slots.map((s, i) => ({
+      recipe_id: newId,
+      sort_order: i,
+      slot_kind: s.slot_kind,
+      family_key: s.slot_kind === 'variation' ? s.family_key : null,
+      muscle_id: s.slot_kind === 'muscle' ? s.muscle_id : null,
+      base_sets: s.base_sets,
+      rep_low: s.rep_low,
+      rep_high: s.rep_high,
+      rest_seconds: s.rest_seconds,
+      priority: s.priority,
+    }));
+    if (rows.length) {
+      const { error: sErr } = await supabase.from('content_day_recipe_slots').insert(rows);
+      if (sErr) { setSaving(false); return setError(sErr.message); }
+    }
+    setSaving(false);
+    reload();
+    nav(`/recipes/${newId}`);
+  }
+
   async function del() {
     if (!confirm(`Delete recipe "${displayName}"?`)) return;
     setSaving(true);
@@ -129,8 +168,19 @@ export default function RecipeEditor() {
 
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <h1 className="mb-1 text-2xl font-bold text-slate-900">{isNew ? 'New recipe' : displayName || 'Edit recipe'}</h1>
-      <p className="mb-6 text-sm text-slate-500">Order matters: the generator fills a session in rounds by muscle — one exercise per muscle, then a second, etc. — so within each muscle, list your first-choice exercise first.</p>
+      <div className="mb-1 flex items-start justify-between gap-3">
+        <h1 className="text-2xl font-bold text-slate-900">{isNew ? 'New recipe' : displayName || 'Edit recipe'}</h1>
+        {!isNew && (
+          <button
+            onClick={duplicate}
+            disabled={saving}
+            className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Duplicate
+          </button>
+        )}
+      </div>
+      <p className="mb-6 text-sm text-slate-500">Order matters: the generator fills a session in rounds by muscle — one exercise per muscle, then a second, etc. — so within each muscle, list your first-choice exercise first. <strong>Editing a recipe changes it for every split that uses it</strong> — use Duplicate to fork a copy for one split.</p>
 
       <div className="mb-6 grid grid-cols-3 gap-4">
         <Field label="Day type" hint="e.g. push, pull, legs">
