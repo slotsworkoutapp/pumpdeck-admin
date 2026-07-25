@@ -37,6 +37,7 @@ export interface GenSlot {
   label: string; // resolved variation / muscle name
   kind: 'variation' | 'muscle';
   group: string | null; // muscle group (for the mini map)
+  muscle: string; // the specific muscle it targets (the round-robin balances on this)
   sets: number;
   reps: number; // a single exact target (midpoint of the goal-adjusted range)
   rest: number;
@@ -64,11 +65,30 @@ function slotGroup(s: ContentSlot, catalog: Catalog): string | null {
   return catalog.familiesByKey.get(s.family_key ?? '')?.muscle_group_raw ?? null;
 }
 
+// Each variation maps to one muscle (its exercises share a primary muscle), so
+// derive family → muscle id from the catalog. The round-robin balances on THIS,
+// not the coarse group — otherwise "legs" swallows calves/glutes and a Push day
+// over-indexes chest presses before its flies.
+function buildFamilyMuscle(catalog: Catalog): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const e of catalog.exercises) {
+    if (e.movement_family_key && e.primary_muscle_id && !m.has(e.movement_family_key)) {
+      m.set(e.movement_family_key, e.primary_muscle_id);
+    }
+  }
+  return m;
+}
+
+function slotMuscle(s: ContentSlot, familyMuscle: Map<string, string>): string {
+  if (s.slot_kind === 'muscle') return s.muscle_id ?? 'other';
+  return familyMuscle.get(s.family_key ?? '') ?? s.family_key ?? 'other';
+}
+
 // Apply goal shifts + fill the time budget; return surviving slots in day order.
 // `weeklySets` is the running per-group set count so far this week — the day
 // leads with whichever muscles are furthest behind, so the WEEK stays balanced
 // even when no single day can fit every muscle.
-function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: ContentGoal, budgetMinutes: number, catalog: Catalog, weeklySets: Map<string, number>): GenDay {
+function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: ContentGoal, budgetMinutes: number, catalog: Catalog, familyMuscle: Map<string, string>, weeklySets: Map<string, number>): GenDay {
   const base: GenDay = { weekday: day.weekday, dayName: day.day_name, dayType: day.day_type, slots: [], dropped: 0, estMinutes: 0 };
   if (!recipe) {
     return { ...base, note: day.day_type ? `No "${day.day_type}" recipe yet` : 'No recipe assigned' };
@@ -97,7 +117,7 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
   const bySortOrder = [...adjusted].sort((a, b) => a.src.sort_order - b.src.sort_order);
   const byGroup = new Map<string, typeof adjusted>();
   for (const a of bySortOrder) {
-    const g = slotGroup(a.src, catalog) ?? a.src.family_key ?? 'other';
+    const g = slotMuscle(a.src, familyMuscle); // balance per MUSCLE (calves ≠ quads ≠ glutes)
     if (!byGroup.has(g)) byGroup.set(g, []);
     byGroup.get(g)!.push(a);
   }
@@ -140,6 +160,7 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
     label: slotLabel(a.src, catalog),
     kind: a.src.slot_kind,
     group: slotGroup(a.src, catalog),
+    muscle: slotMuscle(a.src, familyMuscle),
     sets: chosenSets.get(a.src)!,
     reps: snapReps(a.repLow, a.repHigh),
     rest: a.rest,
@@ -157,15 +178,16 @@ export function generateProgram(
   catalog: Catalog
 ): GenDay[] {
   const recipeByType = new Map(recipes.map((r) => [r.day_type, r]));
-  // Build the days in weekday order, carrying a running per-group set tally so
+  const familyMuscle = buildFamilyMuscle(catalog);
+  // Build the days in weekday order, carrying a running per-MUSCLE set tally so
   // each day can prioritize the muscles the week has under-trained so far.
   const weeklySets = new Map<string, number>();
   return [...split.day_assignments]
     .sort((a, b) => a.weekday - b.weekday)
     .map((d) => {
-      const day = buildDay(d, d.day_type ? recipeByType.get(d.day_type) : undefined, goal, ceilingMinutes, catalog, weeklySets);
+      const day = buildDay(d, d.day_type ? recipeByType.get(d.day_type) : undefined, goal, ceilingMinutes, catalog, familyMuscle, weeklySets);
       for (const s of day.slots) {
-        if (s.group) weeklySets.set(s.group, (weeklySets.get(s.group) ?? 0) + s.sets);
+        weeklySets.set(s.muscle, (weeklySets.get(s.muscle) ?? 0) + s.sets);
       }
       return day;
     });
