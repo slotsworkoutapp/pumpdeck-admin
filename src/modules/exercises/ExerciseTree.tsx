@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
 import type { Catalog, ContentExercise } from '../../lib/content';
+import { GROUP_ORDER as MAPPED_GROUPS } from '../../lib/bodymap';
+
+const HAS_MAP = new Set<string>(MAPPED_GROUPS);
 
 // Muscle group → Primary muscle → Variation → Exercises, mirroring the app's
 // add-exercise browser so the full default structure is visible.
@@ -78,6 +81,7 @@ export default function ExerciseTree({
       {groups.filter((g) => !groupFilter || g.key === groupFilter).map((g) => (
         <div key={g.key} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-100 px-4 py-2">
+            {HAS_MAP.has(g.key) && <img src={`/maps/${g.key}.svg`} alt="" className="size-7 object-contain" />}
             <span className="font-bold uppercase tracking-wide text-slate-700">{g.label}</span>
             <span className="text-xs font-semibold text-slate-400">{g.count}</span>
           </div>
