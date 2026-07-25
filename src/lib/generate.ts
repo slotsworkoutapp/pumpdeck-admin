@@ -21,7 +21,7 @@ export const TIME_BRACKETS = [
 // the equipment, loading it, and warm-up sets before the working sets. Without
 // that overhead an 8-exercise day reads ~20 min too short.
 const SET_WORK_SECONDS = 45;
-const EXERCISE_OVERHEAD_SECONDS = 120;
+const EXERCISE_OVERHEAD_SECONDS = 60;
 export const slotMinutes = (sets: number, rest: number) =>
   (EXERCISE_OVERHEAD_SECONDS + sets * (SET_WORK_SECONDS + rest)) / 60;
 
@@ -80,27 +80,40 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
       mins: slotMinutes(sets, rest),
     };
   });
-  // Fill the time budget: keep by priority (then order) until the next slot would
-  // overrun the session. Longer rests (strength) eat the budget faster.
+  // Fill the time budget by priority (then order). When the next exercise doesn't
+  // fully fit, don't drop it whole — trim its SETS to fill the remaining time, so
+  // the session lands close to the requested length instead of jumping by a whole
+  // exercise (~10 min) at a time. Longer rests (strength) eat the budget faster.
   const byPriority = [...adjusted].sort((a, b) => a.src.priority - b.src.priority || a.src.sort_order - b.src.sort_order);
-  const keep = new Set<ContentSlot>();
+  const chosenSets = new Map<ContentSlot, number>();
   let used = 0;
   for (const a of byPriority) {
     if (used + a.mins <= budgetMinutes) {
-      keep.add(a.src);
+      chosenSets.set(a.src, a.sets);
       used += a.mins;
-    } else break;
+    } else {
+      // How many sets of this exercise fit in the time that's left?
+      const perSet = SET_WORK_SECONDS + a.rest;
+      const remainingSec = (budgetMinutes - used) * 60 - EXERCISE_OVERHEAD_SECONDS;
+      const fitSets = Math.floor(remainingSec / perSet);
+      if (fitSets >= 2) {
+        const useSets = Math.min(a.sets, fitSets);
+        chosenSets.set(a.src, useSets);
+        used += slotMinutes(useSets, a.rest);
+      }
+      break; // budget essentially full
+    }
   }
-  const kept = adjusted.filter((a) => keep.has(a.src)).sort((x, y) => x.src.sort_order - y.src.sort_order);
+  const kept = adjusted.filter((a) => chosenSets.has(a.src)).sort((x, y) => x.src.sort_order - y.src.sort_order);
   const slots: GenSlot[] = kept.map((a) => ({
     label: slotLabel(a.src, catalog),
     kind: a.src.slot_kind,
-    sets: a.sets,
+    sets: chosenSets.get(a.src)!,
     reps: snapReps(a.repLow, a.repHigh),
     rest: a.rest,
     priority: a.src.priority,
   }));
-  const estMinutes = Math.round(kept.reduce((t, a) => t + a.mins, 0));
+  const estMinutes = Math.round(kept.reduce((t, a) => t + slotMinutes(chosenSets.get(a.src)!, a.rest), 0));
   return { ...base, slots, dropped: recipe.slots.length - slots.length, estMinutes };
 }
 
