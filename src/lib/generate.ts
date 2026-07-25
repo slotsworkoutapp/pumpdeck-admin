@@ -97,23 +97,26 @@ function slotMuscle(s: ContentSlot, familyMuscle: Map<string, string>): string {
   return familyMuscle.get(s.family_key ?? '') ?? s.family_key ?? 'other';
 }
 
-// How much volume a muscle "wants", proxied by how many exercises it has in the
-// catalog (lats/quads have many; traps/calves few). Used to weight the weekly
-// balancing so big muscles stay prioritized and small ones don't dominate just
-// because they need less.
-function buildMuscleWeight(catalog: Catalog): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const e of catalog.exercises) {
-    if (e.primary_muscle_id) m.set(e.primary_muscle_id, (m.get(e.primary_muscle_id) ?? 0) + 1);
-  }
-  return m;
+// Groups whose sub-muscles are trained TOGETHER (a bench hits all of the chest),
+// so we balance them as ONE unit — otherwise splitting chest into upper/mid/lower
+// crowds out triceps on a push day. The rest (legs, back, shoulders) are
+// DIVISIBLE — a squat doesn't hit calves, a row doesn't hit rear delts — so those
+// balance per muscle. Matches the group-slot eligibility.
+const UNIFIED_GROUPS = new Set(['chest', 'biceps', 'triceps', 'core', 'forearms']);
+
+// The key the round-robin balances on: the group for unified groups, the specific
+// muscle for divisible ones.
+function balanceKey(s: ContentSlot, catalog: Catalog, familyMuscle: Map<string, string>): string {
+  const group = slotGroup(s, catalog);
+  if (group && UNIFIED_GROUPS.has(group)) return group;
+  return slotMuscle(s, familyMuscle);
 }
 
 // Apply goal shifts + fill the time budget; return surviving slots in day order.
 // `weeklySets` is the running per-group set count so far this week — the day
 // leads with whichever muscles are furthest behind, so the WEEK stays balanced
 // even when no single day can fit every muscle.
-function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: ContentGoal, budgetMinutes: number, catalog: Catalog, familyMuscle: Map<string, string>, muscleWeight: Map<string, number>, weeklySets: Map<string, number>, usedVariations: Set<string>): GenDay {
+function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: ContentGoal, budgetMinutes: number, catalog: Catalog, familyMuscle: Map<string, string>, usedVariations: Set<string>): GenDay {
   const base: GenDay = { weekday: day.weekday, dayName: day.day_name, dayType: day.day_type, slots: [], dropped: 0, estMinutes: 0 };
   if (!recipe) {
     return { ...base, note: day.day_type ? `No "${day.day_type}" recipe yet` : 'No recipe assigned' };
@@ -134,44 +137,38 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
       mins: slotMinutes(sets, rest),
     };
   });
-  // Balance-first fill: go in ROUNDS by muscle group — one exercise for each
-  // muscle the day trains, then a second per muscle, etc. — so any session length
-  // stays balanced across the day's muscles instead of over-indexing the first
-  // one (a 35-min push still gets its triceps work). Groups are ordered by where
-  // they first appear in the recipe; within a group, by the recipe's order.
+  // Round-robin fill: one exercise per balance-key (unified group or divisible
+  // muscle), then a second per key, etc. — so every session stays balanced across
+  // the day's muscles (a 35-min push still gets triceps; a leg day gets calves).
+  // Keys are ordered by where they first appear in the recipe (compounds first),
+  // so each day leads with its own important work.
   const bySortOrder = [...adjusted].sort((a, b) => a.src.sort_order - b.src.sort_order);
-  const byGroup = new Map<string, typeof adjusted>();
+  const byKey = new Map<string, typeof adjusted>();
+  const keyOrder: string[] = []; // recipe first-appearance order
   for (const a of bySortOrder) {
-    const g = slotMuscle(a.src, familyMuscle); // balance per MUSCLE (calves ≠ quads ≠ glutes)
-    if (!byGroup.has(g)) byGroup.set(g, []);
-    byGroup.get(g)!.push(a);
+    const k = balanceKey(a.src, catalog, familyMuscle);
+    if (!byKey.has(k)) { byKey.set(k, []); keyOrder.push(k); }
+    byKey.get(k)!.push(a);
   }
-  // Within each muscle: the PRIMARY lift (its lowest recipe sort_order — the
-  // compound) always leads, so it repeats every session. Only the ACCESSORY
-  // slots rotate for variation coverage (prefer one not yet used this week), so
-  // the week spreads across flies/incline/etc. without ever demoting the compound.
-  for (const list of byGroup.values()) {
+  // Within each key: the PRIMARY lift (lowest recipe sort — the compound) always
+  // leads and repeats every session; only the ACCESSORY slots rotate for
+  // variation coverage (prefer a variation not yet used this week).
+  for (const list of byKey.values()) {
     const minSort = Math.min(...list.map((a) => a.src.sort_order));
     list.sort((a, b) => {
-      const pa = a.src.sort_order === minSort ? 0 : 1; // the muscle's primary leads
+      const pa = a.src.sort_order === minSort ? 0 : 1;
       const pb = b.src.sort_order === minSort ? 0 : 1;
       if (pa !== pb) return pa - pb;
-      const ua = usedVariations.has(a.src.family_key ?? '') ? 1 : 0; // then unused-first
+      const ua = usedVariations.has(a.src.family_key ?? '') ? 1 : 0;
       const ub = usedVariations.has(b.src.family_key ?? '') ? 1 : 0;
       return ua !== ub ? ua - ub : a.src.sort_order - b.src.sort_order;
     });
   }
-  // Lead with the muscles furthest behind for the week RELATIVE to how much
-  // volume they want (sets ÷ weight) — so big muscles (lats, quads) stay
-  // prioritized and small ones (traps, calves) don't crowd them out just because
-  // they need less. Stable sort keeps recipe order as the tiebreak.
-  const deficit = (m: string) => (weeklySets.get(m) ?? 0) / Math.max(1, muscleWeight.get(m) ?? 1);
-  const groupList = [...byGroup.keys()].sort((a, b) => deficit(a) - deficit(b));
-  const maxRounds = Math.max(0, ...[...byGroup.values()].map((v) => v.length));
+  const maxRounds = Math.max(0, ...[...byKey.values()].map((v) => v.length));
   const sequence: typeof adjusted = [];
   for (let r = 0; r < maxRounds; r++) {
-    for (const g of groupList) {
-      const v = byGroup.get(g)!;
+    for (const k of keyOrder) {
+      const v = byKey.get(k)!;
       if (r < v.length) sequence.push(v[r]);
     }
   }
@@ -208,7 +205,7 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
     kind: a.src.slot_kind,
     group: slotGroup(a.src, catalog),
     muscle: slotMuscle(a.src, familyMuscle),
-    familyKey: a.src.slot_kind === 'variation' ? a.src.family_key : null,
+    familyKey: a.src.slot_kind === 'variation' ? a.src.family_key : null, // eslint-disable-line
     sets: chosenSets.get(a.src)!,
     reps: snapReps(a.repLow, a.repHigh),
     rest: a.rest,
@@ -227,18 +224,14 @@ export function generateProgram(
 ): GenDay[] {
   const recipeByType = new Map(recipes.map((r) => [r.day_type, r]));
   const familyMuscle = buildFamilyMuscle(catalog);
-  const muscleWeight = buildMuscleWeight(catalog);
-  // Carried across the week: per-MUSCLE set tally (each day leads with muscles
-  // under-trained so far, weighted by how much volume they want) and the set of
-  // variations already used (accessory slots rotate to maximize coverage).
-  const weeklySets = new Map<string, number>();
+  // Carried across the week: the set of variations already used, so accessory
+  // slots rotate to fresh variations (flat press one push, decline the next).
   const usedVariations = new Set<string>();
   return [...split.day_assignments]
     .sort((a, b) => a.weekday - b.weekday)
     .map((d) => {
-      const day = buildDay(d, d.day_type ? recipeByType.get(d.day_type) : undefined, goal, ceilingMinutes, catalog, familyMuscle, muscleWeight, weeklySets, usedVariations);
+      const day = buildDay(d, d.day_type ? recipeByType.get(d.day_type) : undefined, goal, ceilingMinutes, catalog, familyMuscle, usedVariations);
       for (const s of day.slots) {
-        weeklySets.set(s.muscle, (weeklySets.get(s.muscle) ?? 0) + s.sets);
         if (s.familyKey) usedVariations.add(s.familyKey);
       }
       return day;
