@@ -65,7 +65,10 @@ function slotGroup(s: ContentSlot, catalog: Catalog): string | null {
 }
 
 // Apply goal shifts + fill the time budget; return surviving slots in day order.
-function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: ContentGoal, budgetMinutes: number, catalog: Catalog): GenDay {
+// `weeklySets` is the running per-group set count so far this week — the day
+// leads with whichever muscles are furthest behind, so the WEEK stays balanced
+// even when no single day can fit every muscle.
+function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: ContentGoal, budgetMinutes: number, catalog: Catalog, weeklySets: Map<string, number>): GenDay {
   const base: GenDay = { weekday: day.weekday, dayName: day.day_name, dayType: day.day_type, slots: [], dropped: 0, estMinutes: 0 };
   if (!recipe) {
     return { ...base, note: day.day_type ? `No "${day.day_type}" recipe yet` : 'No recipe assigned' };
@@ -98,7 +101,9 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
     if (!byGroup.has(g)) byGroup.set(g, []);
     byGroup.get(g)!.push(a);
   }
-  const groupList = [...byGroup.keys()];
+  // Lead with the muscles furthest behind for the week (stable sort keeps the
+  // recipe's order as the tiebreak among equally-trained groups).
+  const groupList = [...byGroup.keys()].sort((a, b) => (weeklySets.get(a) ?? 0) - (weeklySets.get(b) ?? 0));
   const maxRounds = Math.max(0, ...[...byGroup.values()].map((v) => v.length));
   const sequence: typeof adjusted = [];
   for (let r = 0; r < maxRounds; r++) {
@@ -152,9 +157,18 @@ export function generateProgram(
   catalog: Catalog
 ): GenDay[] {
   const recipeByType = new Map(recipes.map((r) => [r.day_type, r]));
+  // Build the days in weekday order, carrying a running per-group set tally so
+  // each day can prioritize the muscles the week has under-trained so far.
+  const weeklySets = new Map<string, number>();
   return [...split.day_assignments]
     .sort((a, b) => a.weekday - b.weekday)
-    .map((d) => buildDay(d, d.day_type ? recipeByType.get(d.day_type) : undefined, goal, ceilingMinutes, catalog));
+    .map((d) => {
+      const day = buildDay(d, d.day_type ? recipeByType.get(d.day_type) : undefined, goal, ceilingMinutes, catalog, weeklySets);
+      for (const s of day.slots) {
+        if (s.group) weeklySets.set(s.group, (weeklySets.get(s.group) ?? 0) + s.sets);
+      }
+      return day;
+    });
 }
 
 export const weekdayLabel = (w: number) => WD[w - 1] ?? '?';
