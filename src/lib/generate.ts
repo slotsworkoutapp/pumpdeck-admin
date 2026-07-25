@@ -182,18 +182,23 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
     if (used + a.mins <= budgetMinutes) {
       chosenSets.set(a.src, a.sets);
       used += a.mins;
-    } else {
-      // How many sets of this exercise fit in the time that's left?
-      const perSet = SET_WORK_SECONDS + a.rest;
-      const remainingSec = (budgetMinutes - used) * 60 - EXERCISE_OVERHEAD_SECONDS;
-      const fitSets = Math.floor(remainingSec / perSet);
-      if (fitSets >= 2) {
-        const useSets = Math.min(a.sets, fitSets);
-        chosenSets.set(a.src, useSets);
-        used += slotMinutes(useSets, a.rest);
-      }
-      break; // budget essentially full
+      continue;
     }
+    // Doesn't fully fit. Trim its sets toward the time that's left, but never below
+    // 2 working sets — and prefer landing slightly OVER the budget to stopping well
+    // under it. (At 30 min strength, 2 exercises ≈ 25 m; a 3rd tips to ~33 m — which
+    // is a better session than a near-empty day.) Include only when the resulting
+    // overshoot is no bigger than the shortfall we'd otherwise leave.
+    const perSet = SET_WORK_SECONDS + a.rest;
+    const remainingSec = (budgetMinutes - used) * 60 - EXERCISE_OVERHEAD_SECONDS;
+    const fitSets = Math.floor(remainingSec / perSet);
+    const useSets = Math.min(a.sets, Math.max(2, fitSets));
+    const usedWith = used + slotMinutes(useSets, a.rest);
+    if (useSets >= 2 && budgetMinutes - used >= usedWith - budgetMinutes) {
+      chosenSets.set(a.src, useSets);
+      used = usedWith;
+    }
+    break; // budget essentially full
   }
   // Display in workout-flow order: big muscles → shoulders → arms → core.
   const kept = adjusted.filter((a) => chosenSets.has(a.src)).sort((x, y) => {
