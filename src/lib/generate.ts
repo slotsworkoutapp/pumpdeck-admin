@@ -19,6 +19,14 @@ export const TIME_BRACKETS = [
 const SET_WORK_SECONDS = 40;
 export const slotMinutes = (sets: number, rest: number) => (sets * (SET_WORK_SECONDS + rest)) / 60;
 
+// Real programs use "nice" rep targets, never 11/13/14. Snap the range's
+// midpoint to the closest conventional number (ties resolve to the lower one).
+const REP_TARGETS = [3, 4, 5, 6, 8, 10, 12, 15, 20];
+function snapReps(low: number, high: number): number {
+  const mid = (low + high) / 2;
+  return REP_TARGETS.reduce((best, r) => (Math.abs(r - mid) < Math.abs(best - mid) ? r : best));
+}
+
 export interface GenSlot {
   label: string; // resolved variation / muscle name
   kind: 'variation' | 'muscle';
@@ -82,7 +90,7 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
     label: slotLabel(a.src, catalog),
     kind: a.src.slot_kind,
     sets: a.sets,
-    reps: Math.round((a.repLow + a.repHigh) / 2),
+    reps: snapReps(a.repLow, a.repHigh),
     rest: a.rest,
     priority: a.src.priority,
   }));
