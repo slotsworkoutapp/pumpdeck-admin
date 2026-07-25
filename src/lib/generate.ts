@@ -66,7 +66,7 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
   }
   // Goal-adjusted copy of each slot (+ its estimated minutes, rest included).
   const adjusted = recipe.slots.map((s) => {
-    const sets = Math.max(1, s.base_sets + goal.set_shift);
+    const sets = Math.max(2, s.base_sets + goal.set_shift);
     const repLow = Math.max(3, s.rep_low + goal.rep_shift);
     // Round rest to a clean 15s increment and cap at 3:00 — the most rest a set
     // should ever get. (A raw multiplier gives ugly, over-long values like 288s.)
