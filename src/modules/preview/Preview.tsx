@@ -8,6 +8,7 @@ import {
 } from '../../lib/content';
 import { generateProgram, weekdayLabel, type GenDay, type GenSlot } from '../../lib/generate';
 import { GROUP_ORDER } from '../../lib/bodymap';
+import { COVERAGE_GROUPS, GROUP_SHORT, perGroupSets, isLow } from '../../lib/coverage';
 
 const HAS_MAP = new Set<string>(GROUP_ORDER);
 // The three session lengths the app actually offers — the whole scenario grid.
@@ -29,6 +30,7 @@ function toLockShape(program: GenDay[]): LockedDay[] {
       sets: s.sets,
       reps: s.reps,
       rest: s.rest,
+      muscle: s.muscle,
       label: s.label,
       group: s.group,
       kind: s.kind,
@@ -203,6 +205,8 @@ export default function Preview() {
               </div>
             )}
 
+            <CoverageStrip program={program} catalog={catalog} />
+
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {program.map((d, i) => (
                 <DayCard key={i} day={d} recipeId={d.dayType ? recipeIdByType.get(d.dayType) : undefined} onEditSlot={handleEditSlot} />
@@ -254,6 +258,56 @@ function SplitGroup({
               >{isDone && <span className="text-[9px] leading-none">✓</span>}</button>
               <span className={`flex-1 ${isDone ? 'text-slate-400' : 'text-slate-700'}`}>{c.minutes}m · {c.goal.display_name}</span>
               {isDone && <span className="text-[9px]">🔒</span>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Per-scenario coverage: weekly sets per muscle GROUP (with the same fair-share
+// red flag as the Coverage page) plus a per-MUSCLE breakdown so hidden sub-muscles
+// (calves, rear delts) are visible while reviewing.
+function CoverageStrip({ program, catalog }: { program: GenDay[]; catalog: Catalog }) {
+  const perGroup = perGroupSets(program);
+  const perMuscleByGroup = useMemo(() => {
+    const acc: Record<string, number> = {};
+    for (const d of program) for (const s of d.slots) if (s.muscle) acc[s.muscle] = (acc[s.muscle] ?? 0) + s.sets;
+    const map: Record<string, { name: string; sets: number }[]> = {};
+    for (const [mid, sets] of Object.entries(acc)) {
+      const m = catalog.musclesById.get(mid);
+      const g = m?.group_raw ?? 'other';
+      (map[g] ??= []).push({ name: m?.name ?? mid, sets });
+    }
+    for (const g of Object.keys(map)) map[g].sort((a, b) => b.sets - a.sets);
+    return map;
+  }, [program, catalog]);
+
+  const trained = COVERAGE_GROUPS.filter((g) => (perGroup[g] ?? 0) > 0);
+  const totalSets = trained.reduce((t, g) => t + perGroup[g], 0);
+  if (!trained.length) return null;
+
+  return (
+    <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="text-xs font-semibold uppercase text-slate-500">Weekly coverage</span>
+        <span className="text-xs text-slate-400">{totalSets} sets · <span className="text-rose-600">red</span> = under its fair share</span>
+      </div>
+      <div className="grid gap-1.5">
+        {trained.map((g) => {
+          const low = isLow(perGroup, g);
+          return (
+            <div key={g} className="flex items-center gap-2">
+              <span className={`w-12 shrink-0 text-sm font-semibold ${low ? 'text-rose-600' : 'text-slate-700'}`}>{GROUP_SHORT[g]}</span>
+              <span className={`w-7 shrink-0 text-right text-sm font-bold tabular-nums ${low ? 'text-rose-700' : 'text-slate-900'}`}>{perGroup[g]}</span>
+              <div className="flex flex-1 flex-wrap gap-1">
+                {(perMuscleByGroup[g] ?? []).map((m) => (
+                  <span key={m.name} className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-500">
+                    {m.name} <span className="font-semibold tabular-nums text-slate-800">{m.sets}</span>
+                  </span>
+                ))}
+              </div>
             </div>
           );
         })}

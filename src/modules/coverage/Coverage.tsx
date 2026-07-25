@@ -2,16 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSplits, useRecipes, useGoals, useCatalog } from '../../lib/content';
 import { generateProgram } from '../../lib/generate';
 import { SelectField } from '../../components/ui';
-
-// Muscle groups in display order. Instead of an absolute weekly minimum (which
-// unfairly flags small 2–3 day splits), we judge BALANCE: each group's fair
-// share of a split's total volume, weighted by how much volume it should get
-// (legs/back big, arms/forearms small). A group is flagged only if it gets well
-// below its fair share for THAT split — so a balanced small split reads all-green.
-const GROUPS = ['chest', 'back', 'shoulders', 'legs', 'biceps', 'triceps', 'forearms', 'core'] as const;
-const WEIGHT: Record<string, number> = { chest: 2.5, back: 3, shoulders: 2.5, legs: 4, biceps: 1.5, triceps: 1.5, forearms: 1, core: 1.5 };
-const BALANCE_FACTOR = 0.6; // flag if a group gets < 60% of its fair share
-const SHORT: Record<string, string> = { chest: 'Chest', back: 'Back', shoulders: 'Delts', legs: 'Legs', biceps: 'Bis', triceps: 'Tris', forearms: 'Fore', core: 'Core' };
+import { COVERAGE_GROUPS as GROUPS, GROUP_SHORT as SHORT, SESSION_TIMES, perGroupSets, fairShareFn, BALANCE_FACTOR } from '../../lib/coverage';
 
 interface Row {
   key: string;
@@ -40,12 +31,8 @@ export default function Coverage() {
     if (!splits || !recipes || !catalog || !goal) return [];
     return splits.map((s) => {
       const days = generateProgram(s, recipes, goal, minutes, catalog);
-      const perGroup: Record<string, number> = {};
-      const emptyDays: string[] = [];
-      for (const d of days) {
-        if (d.note) emptyDays.push(d.dayName);
-        for (const slot of d.slots) if (slot.group) perGroup[slot.group] = (perGroup[slot.group] ?? 0) + slot.sets;
-      }
+      const perGroup = perGroupSets(days);
+      const emptyDays = days.filter((d) => d.note).map((d) => d.dayName);
       return { key: s.key, name: s.display_name, perGroup, emptyDays };
     });
   }, [splits, recipes, catalog, goal, minutes]);
@@ -59,16 +46,21 @@ export default function Coverage() {
         Weekly sets per muscle group each split actually delivers <strong>at this session length</strong> — after time-trimming
         and week-aware balancing. <span className="font-semibold text-rose-600">Red</span> = under-served <em>relative to the rest
         of this split</em> (not an absolute minimum), so a small 2-day split reads green as long as it's balanced.
-        <span className="text-slate-400"> Grey dash</span> = not trained. Drag the slider to see the numbers move.
+        <span className="text-slate-400"> Grey dash</span> = not trained. Switch session length to see the numbers move.
       </p>
 
       <div className="mb-5 flex flex-wrap items-end gap-4">
-        <div className="w-80 rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <div className="mb-1 flex items-baseline justify-between">
-            <span className="text-xs font-semibold uppercase text-slate-500">Session length</span>
-            <span className="text-base font-bold tabular-nums text-slate-900">{minutes} min</span>
+        <div>
+          <span className="mb-1 block text-xs font-semibold uppercase text-slate-500">Session length</span>
+          <div className="flex overflow-hidden rounded-lg border border-slate-300">
+            {SESSION_TIMES.map((m) => (
+              <button
+                key={m}
+                onClick={() => setMinutes(m)}
+                className={`px-4 py-1.5 text-sm font-semibold ${minutes === m ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+              >{m}m</button>
+            ))}
           </div>
-          <input type="range" min={30} max={90} step={1} value={minutes} onChange={(e) => setMinutes(parseInt(e.target.value, 10))} className="w-full accent-indigo-600" />
         </div>
         <label className="block">
           <span className="mb-1 block text-xs font-semibold uppercase text-slate-500">Goal</span>
@@ -92,10 +84,7 @@ export default function Coverage() {
               // Fair share is computed over the groups this split actually trains,
               // so balance is judged among what it trains — not against groups it
               // intentionally skips.
-              const trained = GROUPS.filter((g) => (r.perGroup[g] ?? 0) > 0);
-              const total = trained.reduce((t, g) => t + r.perGroup[g], 0);
-              const weightSum = trained.reduce((t, g) => t + WEIGHT[g], 0);
-              const fairShare = (g: string) => (weightSum ? (total * WEIGHT[g]) / weightSum : 0);
+              const fairShare = fairShareFn(r.perGroup);
               return (
               <tr key={r.key} className="border-b border-slate-100 last:border-0">
                 <td className="px-3 py-2 font-medium text-slate-800">{r.name}</td>

@@ -215,6 +215,12 @@ export interface LockedSlot {
   sets: number;
   reps: number;
   rest: number;
+  // Display extras (dashboard-only; the app-facing export strips these).
+  muscle?: string;
+  label?: string;
+  group?: string | null;
+  kind?: string;
+  slotId?: string | null;
 }
 export interface LockedDay {
   weekday: number;
