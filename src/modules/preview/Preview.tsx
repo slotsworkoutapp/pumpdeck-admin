@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSplits, useRecipes, useGoals, useCatalog } from '../../lib/content';
 import { generateProgram, weekdayLabel, type GenDay } from '../../lib/generate';
 import { SelectField } from '../../components/ui';
-import { Thumb } from '../exercises/ExerciseTree';
 import { GROUP_ORDER } from '../../lib/bodymap';
 
 const HAS_MAP = new Set<string>(GROUP_ORDER);
@@ -106,12 +105,18 @@ function DayCard({ day }: { day: GenDay }) {
       ) : (
         <ul className="divide-y divide-slate-50">
           {day.slots.map((s, i) => (
-            <li key={i} className="flex items-center gap-2 px-4 py-2 text-sm">
-              <Thumb />
+            <li key={i} className="flex items-center gap-2.5 px-4 py-2 text-sm">
+              <div className="grid h-11 w-16 shrink-0 place-items-center rounded-md border border-dashed border-slate-200 bg-slate-50">
+                <svg viewBox="0 0 24 24" className="size-5 text-slate-300" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="m21 15-5-5L5 21" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
               {s.group && HAS_MAP.has(s.group) ? (
-                <img src={`/maps/${s.group}.svg`} alt="" className="size-8 shrink-0 object-contain" />
+                <img src={`/maps/${s.group}.svg`} alt="" className="size-5 shrink-0 object-contain" />
               ) : (
-                <span className="size-8 shrink-0" />
+                <span className="size-5 shrink-0" />
               )}
               <span className="flex-1 font-semibold text-slate-800">{s.label}</span>
               {s.kind === 'muscle' && <span className="text-[10px] font-bold uppercase text-indigo-500">muscle</span>}
