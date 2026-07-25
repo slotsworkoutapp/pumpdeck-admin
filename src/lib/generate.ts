@@ -39,6 +39,7 @@ export interface GenSlot {
   group: string | null; // muscle group (for the mini map)
   muscle: string; // the specific muscle it targets (the round-robin balances on this)
   familyKey: string | null; // the variation key (for week-wide variation coverage)
+  slotId: string | null; // the source recipe slot id (for inline editing in the preview)
   sets: number;
   reps: number; // a single exact target (midpoint of the goal-adjusted range)
   rest: number;
@@ -211,6 +212,7 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
     group: slotGroup(a.src, catalog),
     muscle: slotMuscle(a.src, familyMuscle),
     familyKey: a.src.slot_kind === 'variation' ? a.src.family_key : null, // eslint-disable-line
+    slotId: a.src.id ?? null,
     sets: chosenSets.get(a.src)!,
     reps: snapReps(a.repLow, a.repHigh),
     rest: a.rest,

@@ -140,6 +140,7 @@ export function useRecipes() {
   const [recipes, setRecipes] = useState<ContentRecipe[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -167,9 +168,9 @@ export function useRecipes() {
       );
       setLoading(false);
     })();
-  }, []);
+  }, [tick]);
 
-  return { recipes, error, loading };
+  return { recipes, error, loading, reload: () => setTick((t) => t + 1) };
 }
 
 export function useCatalog() {

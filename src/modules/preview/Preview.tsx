@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useSplits, useRecipes, useGoals, useCatalog, type ContentGoal, type ContentSplit } from '../../lib/content';
-import { generateProgram, weekdayLabel, type GenDay } from '../../lib/generate';
+import { supabase } from '../../lib/supabase';
+import { useSplits, useRecipes, useGoals, useCatalog, type Catalog, type ContentGoal, type ContentSplit } from '../../lib/content';
+import { generateProgram, weekdayLabel, type GenDay, type GenSlot } from '../../lib/generate';
 import { GROUP_ORDER } from '../../lib/bodymap';
 
 const HAS_MAP = new Set<string>(GROUP_ORDER);
@@ -17,12 +18,27 @@ const scenarioId = (splitKey: string, minutes: number, goalKey: string) => `${sp
 
 export default function Preview() {
   const { splits, loading: ls } = useSplits();
-  const { recipes, loading: lr } = useRecipes();
+  const { recipes, loading: lr, reload: reloadRecipes } = useRecipes();
   const { goals, loading: lg } = useGoals();
   const { catalog, loading: lc } = useCatalog();
 
   const [reviewed, setReviewed] = useState<Record<string, boolean>>(loadReviewed);
   const [active, setActive] = useState<{ splitKey: string; minutes: number; goalKey: string } | null>(null);
+  const [editing, setEditing] = useState<GenSlot | null>(null);
+  const [savingSlot, setSavingSlot] = useState(false);
+
+  // Swap the exercise for a slot right from the preview — writes the underlying
+  // recipe slot and re-generates. (The recipe is shared, so this changes the slot
+  // everywhere that recipe is used.)
+  async function applySlotEdit(patch: { slot_kind: 'variation' | 'muscle'; family_key: string | null; muscle_id: string | null }) {
+    if (!editing?.slotId) return;
+    setSavingSlot(true);
+    const { error } = await supabase.from('content_day_recipe_slots').update(patch).eq('id', editing.slotId);
+    setSavingSlot(false);
+    if (error) { alert(`Couldn't save: ${error.message}`); return; }
+    setEditing(null);
+    reloadRecipes();
+  }
 
   useEffect(() => { localStorage.setItem(REVIEW_KEY, JSON.stringify(reviewed)); }, [reviewed]);
 
@@ -122,12 +138,16 @@ export default function Preview() {
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {program.map((d, i) => (
-                <DayCard key={i} day={d} recipeId={d.dayType ? recipeIdByType.get(d.dayType) : undefined} />
+                <DayCard key={i} day={d} recipeId={d.dayType ? recipeIdByType.get(d.dayType) : undefined} onEditSlot={setEditing} />
               ))}
             </div>
           </>
         )}
       </main>
+
+      {editing && catalog && (
+        <SlotPicker slot={editing} catalog={catalog} saving={savingSlot} onClose={() => setEditing(null)} onPick={applySlotEdit} />
+      )}
     </div>
   );
 }
@@ -173,7 +193,95 @@ function SplitGroup({
   );
 }
 
-function DayCard({ day, recipeId }: { day: GenDay; recipeId?: string }) {
+function SlotPicker({
+  slot, catalog, saving, onClose, onPick,
+}: {
+  slot: GenSlot;
+  catalog: Catalog;
+  saving: boolean;
+  onClose: () => void;
+  onPick: (patch: { slot_kind: 'variation' | 'muscle'; family_key: string | null; muscle_id: string | null }) => void;
+}) {
+  const [tab, setTab] = useState<'variation' | 'muscle'>(slot.kind === 'muscle' ? 'muscle' : 'variation');
+  const [q, setQ] = useState('');
+  const ql = q.trim().toLowerCase();
+
+  const families = useMemo(
+    () =>
+      [...catalog.families]
+        .sort((a, b) => (a.muscle_group_raw ?? '').localeCompare(b.muscle_group_raw ?? '') || a.display_name.localeCompare(b.display_name))
+        .filter((f) => !ql || f.display_name.toLowerCase().includes(ql) || (f.muscle_group_raw ?? '').toLowerCase().includes(ql)),
+    [catalog, ql]
+  );
+  const muscles = useMemo(
+    () =>
+      [...catalog.muscles]
+        .sort((a, b) => a.group_raw.localeCompare(b.group_raw) || a.name.localeCompare(b.name))
+        .filter((m) => !ql || m.name.toLowerCase().includes(ql) || m.group_raw.toLowerCase().includes(ql)),
+    [catalog, ql]
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+      <div className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="border-b border-slate-100 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-slate-900">Swap exercise</h3>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-700">✕</button>
+          </div>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Currently <span className="font-semibold text-slate-700">{slot.label}</span> — changes this slot in the recipe (everywhere it's used).
+          </p>
+          <div className="mt-3 flex overflow-hidden rounded-lg border border-slate-300 text-sm">
+            {(['variation', 'muscle'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`flex-1 py-1.5 font-semibold ${tab === t ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+              >{t === 'variation' ? 'Variations' : 'Whole muscle'}</button>
+            ))}
+          </div>
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search…"
+            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-slate-500"
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto p-2">
+          {saving ? (
+            <div className="p-4 text-center text-sm text-slate-400">Saving…</div>
+          ) : tab === 'variation' ? (
+            families.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => onPick({ slot_kind: 'variation', family_key: f.key, muscle_id: null })}
+                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-indigo-50 ${slot.familyKey === f.key ? 'bg-indigo-50' : ''}`}
+              >
+                <span className="w-16 shrink-0 text-[10px] font-bold uppercase text-slate-400">{f.muscle_group_raw ?? '?'}</span>
+                <span className="font-semibold text-slate-800">{f.display_name}</span>
+              </button>
+            ))
+          ) : (
+            muscles.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => onPick({ slot_kind: 'muscle', family_key: null, muscle_id: m.id })}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-indigo-50"
+              >
+                <span className="w-16 shrink-0 text-[10px] font-bold uppercase text-slate-400">{m.group_raw}</span>
+                <span className="font-semibold text-slate-800">{m.name}</span>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DayCard({ day, recipeId, onEditSlot }: { day: GenDay; recipeId?: string; onEditSlot: (s: GenSlot) => void }) {
   const totalSets = day.slots.reduce((n, s) => n + s.sets, 0);
   return (
     <div className="rounded-xl border border-slate-200 bg-white">
@@ -191,7 +299,12 @@ function DayCard({ day, recipeId }: { day: GenDay; recipeId?: string }) {
       ) : (
         <ul className="divide-y divide-slate-50">
           {day.slots.map((s, i) => (
-            <li key={i} className="flex items-center gap-2 px-4 py-2 text-sm">
+            <li
+              key={i}
+              onClick={() => s.slotId && onEditSlot(s)}
+              className={`flex items-center gap-2 px-4 py-2 text-sm ${s.slotId ? 'cursor-pointer hover:bg-indigo-50' : ''}`}
+              title={s.slotId ? 'Click to swap this exercise' : undefined}
+            >
               {s.group && HAS_MAP.has(s.group) ? (
                 <img src={`/maps/${s.group}.svg`} alt="" className="size-8 shrink-0 object-contain" />
               ) : (
