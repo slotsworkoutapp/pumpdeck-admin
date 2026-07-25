@@ -207,3 +207,47 @@ export function useCatalog() {
 
   return { catalog, error, loading };
 }
+
+// --- Locked programs (reviewed scenarios frozen as the app's source of truth) ---
+export interface LockedSlot {
+  familyKey: string | null;
+  muscleId: string | null;
+  sets: number;
+  reps: number;
+  rest: number;
+}
+export interface LockedDay {
+  weekday: number;
+  dayName: string;
+  dayType: string | null;
+  slots: LockedSlot[];
+}
+export interface LockedProgram {
+  split_key: string;
+  minutes: number;
+  goal_key: string;
+  days: LockedDay[];
+}
+export const lockId = (splitKey: string, minutes: number, goalKey: string) => `${splitKey}|${minutes}|${goalKey}`;
+
+// All locks, keyed split|minutes|goal → frozen days. reload() re-fetches.
+export function useLockedPrograms() {
+  const [locks, setLocks] = useState<Record<string, LockedDay[]> | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('content_locked_programs').select('*');
+      const m: Record<string, LockedDay[]> = {};
+      for (const r of (data ?? []) as LockedProgram[]) m[lockId(r.split_key, r.minutes, r.goal_key)] = r.days;
+      setLocks(m);
+    })();
+  }, [tick]);
+  return { locks, reload: () => setTick((t) => t + 1) };
+}
+
+export async function lockProgram(splitKey: string, minutes: number, goalKey: string, days: LockedDay[]) {
+  return supabase.from('content_locked_programs').upsert({ split_key: splitKey, minutes, goal_key: goalKey, days });
+}
+export async function unlockProgram(splitKey: string, minutes: number, goalKey: string) {
+  return supabase.from('content_locked_programs').delete().eq('split_key', splitKey).eq('minutes', minutes).eq('goal_key', goalKey);
+}

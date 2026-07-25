@@ -28,7 +28,7 @@ const env = Object.fromEntries(
 
 const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY);
 
-const [mu, fa, ex, sp, rec, sl, go] = await Promise.all([
+const [mu, fa, ex, sp, rec, sl, go, lk] = await Promise.all([
   supabase.from('content_muscles').select('*').eq('enabled', true).order('sort_order'),
   supabase.from('content_families').select('*').eq('enabled', true).order('sort_order'),
   supabase.from('content_exercises').select('*').eq('enabled', true).order('sort_order'),
@@ -36,8 +36,9 @@ const [mu, fa, ex, sp, rec, sl, go] = await Promise.all([
   supabase.from('content_day_recipes').select('*').eq('enabled', true).order('sort_order'),
   supabase.from('content_day_recipe_slots').select('*').order('sort_order'),
   supabase.from('content_goal_profiles').select('*').eq('enabled', true).order('sort_order'),
+  supabase.from('content_locked_programs').select('*'),
 ]);
-const err = mu.error || fa.error || ex.error || sp.error || rec.error || sl.error || go.error;
+const err = mu.error || fa.error || ex.error || sp.error || rec.error || sl.error || go.error || lk.error;
 if (err) {
   console.error('Fetch failed:', err.message);
   process.exit(1);
@@ -81,9 +82,22 @@ const goals = go.data.map((g) => ({
   rep_shift: g.rep_shift, rest_multiplier: g.rest_multiplier, set_shift: g.set_shift, sort_order: g.sort_order,
 }));
 
-const snapshot = { version: 2, generatedAt: null, muscles, families, exercises, splits, recipes, goals };
+// Locked programs: reviewed scenarios the app ships verbatim. Keep only what the
+// app materializes from (family/muscle + sets/reps/rest) — drop display extras.
+const lockedPrograms = (lk.data ?? []).map((p) => ({
+  split_key: p.split_key, minutes: p.minutes, goal_key: p.goal_key,
+  days: (p.days ?? []).map((d) => ({
+    weekday: d.weekday,
+    slots: (d.slots ?? []).map((s) => ({
+      familyKey: s.familyKey ?? null, muscleId: s.muscleId ?? null,
+      sets: s.sets, reps: s.reps, rest: s.rest,
+    })),
+  })),
+}));
+
+const snapshot = { version: 2, generatedAt: null, muscles, families, exercises, splits, recipes, goals, lockedPrograms };
 writeFileSync(APP_SNAPSHOT, JSON.stringify(snapshot, null, 2));
 console.log(`✓ ${muscles.length} muscles · ${families.length} families · ${exercises.length} exercises`);
-console.log(`✓ ${splits.length} splits · ${recipes.length} recipes · ${goals.length} goals`);
+console.log(`✓ ${splits.length} splits · ${recipes.length} recipes · ${goals.length} goals · ${lockedPrograms.length} locked programs`);
 console.log(`✓ wrote ${APP_SNAPSHOT}`);
 console.log('  Rebuild the app to bundle it — new users will seed from this.');

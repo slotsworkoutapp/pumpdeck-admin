@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { useSplits, useRecipes, useGoals, useCatalog, type Catalog, type ContentGoal, type ContentSplit } from '../../lib/content';
+import {
+  useSplits, useRecipes, useGoals, useCatalog, useLockedPrograms,
+  lockProgram, unlockProgram, lockId,
+  type Catalog, type ContentGoal, type ContentSplit, type LockedDay,
+} from '../../lib/content';
 import { generateProgram, weekdayLabel, type GenDay, type GenSlot } from '../../lib/generate';
 import { GROUP_ORDER } from '../../lib/bodymap';
 
@@ -9,27 +13,43 @@ const HAS_MAP = new Set<string>(GROUP_ORDER);
 // The three session lengths the app actually offers — the whole scenario grid.
 const TIMES = [30, 45, 60];
 
-// Persisted LOCKS: marking a scenario reviewed freezes its exact generated
-// program here, so later edits to a shared recipe can't silently change it.
-// Keyed split|min|goal → the frozen GenDay[]. (Browser-local for now.)
-const LOCK_KEY = 'pd_locked_v1';
-function loadLocked(): Record<string, GenDay[]> {
-  try { return JSON.parse(localStorage.getItem(LOCK_KEY) ?? '{}'); } catch { return {}; }
+// Freeze the generated program into the app-facing shape: keep what the app needs
+// to materialize (family/muscle + sets/reps/rest) PLUS display fields so the
+// dashboard can render a locked day with the same card.
+function toLockShape(program: GenDay[]): LockedDay[] {
+  return program.map((d) => ({
+    weekday: d.weekday,
+    dayName: d.dayName,
+    dayType: d.dayType,
+    dropped: d.dropped,
+    estMinutes: d.estMinutes,
+    slots: d.slots.map((s) => ({
+      familyKey: s.familyKey,
+      muscleId: s.kind === 'muscle' ? s.muscle : null,
+      sets: s.sets,
+      reps: s.reps,
+      rest: s.rest,
+      label: s.label,
+      group: s.group,
+      kind: s.kind,
+      slotId: s.slotId,
+    })),
+  }));
 }
-const scenarioId = (splitKey: string, minutes: number, goalKey: string) => `${splitKey}|${minutes}|${goalKey}`;
 
 export default function Preview() {
   const { splits, loading: ls } = useSplits();
   const { recipes, loading: lr, reload: reloadRecipes } = useRecipes();
   const { goals, loading: lg } = useGoals();
   const { catalog, loading: lc } = useCatalog();
+  const { locks, reload: reloadLocks } = useLockedPrograms();
 
-  const [locked, setLocked] = useState<Record<string, GenDay[]>>(loadLocked);
   const [active, setActive] = useState<{ splitKey: string; minutes: number; goalKey: string } | null>(null);
   const [editing, setEditing] = useState<GenSlot | null>(null);
   const [savingSlot, setSavingSlot] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => { localStorage.setItem(LOCK_KEY, JSON.stringify(locked)); }, [locked]);
+  const lockedMap = locks ?? {};
 
   // Seed the active scenario once data lands.
   useEffect(() => {
@@ -46,9 +66,8 @@ export default function Preview() {
 
   const orderedSplits = useMemo(() => [...(splits ?? [])].sort((a, b) => a.sort_order - b.sort_order), [splits]);
   const total = orderedSplits.length * TIMES.length * (goals?.length ?? 0);
-  const doneCount = Object.keys(locked).length;
+  const doneCount = Object.keys(lockedMap).length;
 
-  // Generate any scenario on demand (pure over the loaded content).
   function genFor(splitKey: string, minutes: number, goalKey: string): GenDay[] {
     const s = orderedSplits.find((x) => x.key === splitKey);
     const g = goals?.find((x) => x.goal_key === goalKey);
@@ -56,35 +75,37 @@ export default function Preview() {
     return generateProgram(s, recipes, g, minutes, catalog);
   }
 
-  function toggleLock(splitKey: string, minutes: number, goalKey: string) {
-    const id = scenarioId(splitKey, minutes, goalKey);
-    setLocked((L) => {
-      const next = { ...L };
-      if (next[id]) delete next[id];
-      else next[id] = genFor(splitKey, minutes, goalKey);
-      return next;
-    });
+  async function toggleLock(splitKey: string, minutes: number, goalKey: string) {
+    if (busy) return;
+    setBusy(true);
+    const id = lockId(splitKey, minutes, goalKey);
+    const res = lockedMap[id]
+      ? await unlockProgram(splitKey, minutes, goalKey)
+      : await lockProgram(splitKey, minutes, goalKey, toLockShape(genFor(splitKey, minutes, goalKey)));
+    setBusy(false);
+    if (res.error) { alert(`Couldn't save lock: ${res.error.message}`); return; }
+    reloadLocks();
   }
-  function relock(id: string, splitKey: string, minutes: number, goalKey: string) {
-    setLocked((L) => ({ ...L, [id]: genFor(splitKey, minutes, goalKey) }));
+  async function relock(splitKey: string, minutes: number, goalKey: string) {
+    setBusy(true);
+    const res = await lockProgram(splitKey, minutes, goalKey, toLockShape(genFor(splitKey, minutes, goalKey)));
+    setBusy(false);
+    if (res.error) { alert(`Couldn't update lock: ${res.error.message}`); return; }
+    reloadLocks();
   }
 
-  const loading = ls || lr || lg || lc;
+  const loading = ls || lr || lg || lc || locks === null;
   if (loading) return <div className="p-8 text-slate-400">Loading…</div>;
   if (!splits || !recipes || !goals || !catalog) return null;
 
   const split = active ? orderedSplits.find((s) => s.key === active.splitKey) : undefined;
   const goal = active ? goals.find((g) => g.goal_key === active.goalKey) : undefined;
-  const activeId = active ? scenarioId(active.splitKey, active.minutes, active.goalKey) : '';
-  const isLocked = !!locked[activeId];
-  // Live generation (what the recipes produce right now).
+  const activeId = active ? lockId(active.splitKey, active.minutes, active.goalKey) : '';
+  const isLocked = !!lockedMap[activeId];
   const liveProgram = split && goal && active ? generateProgram(split, recipes, goal, active.minutes, catalog) : [];
-  // A locked scenario shows its FROZEN snapshot, immune to later recipe edits.
-  const program = isLocked ? locked[activeId] : liveProgram;
-  const drift = isLocked && JSON.stringify(locked[activeId]) !== JSON.stringify(liveProgram);
+  const program = isLocked ? (lockedMap[activeId] as unknown as GenDay[]) : liveProgram;
+  const drift = isLocked && JSON.stringify(lockedMap[activeId]) !== JSON.stringify(toLockShape(liveProgram));
 
-  // Swap the exercise for a slot right from the preview. Editing a locked
-  // scenario would break the freeze, so we confirm-unlock first.
   async function applySlotEdit(patch: { slot_kind: 'variation' | 'muscle'; family_key: string | null; muscle_id: string | null }) {
     if (!editing?.slotId) return;
     setSavingSlot(true);
@@ -94,10 +115,11 @@ export default function Preview() {
     setEditing(null);
     reloadRecipes();
   }
-  function handleEditSlot(s: GenSlot) {
-    if (isLocked) {
+  async function handleEditSlot(s: GenSlot) {
+    if (isLocked && active) {
       if (!confirm('This scenario is reviewed & locked. Unlock it to edit? (Editing changes the shared recipe.)')) return;
-      setLocked((L) => { const n = { ...L }; delete n[activeId]; return n; });
+      await unlockProgram(active.splitKey, active.minutes, active.goalKey);
+      reloadLocks();
     }
     setEditing(s);
   }
@@ -121,7 +143,7 @@ export default function Preview() {
               key={s.key}
               split={s}
               goals={goals}
-              locked={locked}
+              locked={lockedMap}
               activeId={activeId}
               onSelect={(minutes, goalKey) => setActive({ splitKey: s.key, minutes, goalKey })}
               onToggle={(minutes, goalKey) => toggleLock(s.key, minutes, goalKey)}
@@ -164,17 +186,18 @@ export default function Preview() {
                   ))}
                 </div>
                 <button
+                  disabled={busy}
                   onClick={() => toggleLock(active.splitKey, active.minutes, active.goalKey)}
-                  className={`rounded-lg px-4 py-1.5 text-sm font-bold ${isLocked ? 'bg-emerald-500 text-white' : 'border border-emerald-500 text-emerald-600 hover:bg-emerald-50'}`}
+                  className={`rounded-lg px-4 py-1.5 text-sm font-bold disabled:opacity-50 ${isLocked ? 'bg-emerald-500 text-white' : 'border border-emerald-500 text-emerald-600 hover:bg-emerald-50'}`}
                 >{isLocked ? '✓ Reviewed' : 'Mark reviewed'}</button>
               </div>
             </div>
 
             {drift && (
               <div className="mb-4 flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-                <span>A recipe changed since you locked this — the frozen version below is what's kept.</span>
+                <span>A recipe changed since you locked this — the frozen version below is what's kept (and what the app ships).</span>
                 <button
-                  onClick={() => relock(activeId, active.splitKey, active.minutes, active.goalKey)}
+                  onClick={() => relock(active.splitKey, active.minutes, active.goalKey)}
                   className="ml-3 rounded-md bg-amber-600 px-3 py-1 text-xs font-bold text-white hover:bg-amber-700"
                 >Update to current</button>
               </div>
@@ -201,12 +224,12 @@ function SplitGroup({
 }: {
   split: ContentSplit;
   goals: ContentGoal[];
-  locked: Record<string, GenDay[]>;
+  locked: Record<string, LockedDay[]>;
   activeId: string;
   onSelect: (minutes: number, goalKey: string) => void;
   onToggle: (minutes: number, goalKey: string) => void;
 }) {
-  const cells = TIMES.flatMap((m) => goals.map((g) => ({ minutes: m, goal: g, id: scenarioId(split.key, m, g.goal_key) })));
+  const cells = TIMES.flatMap((m) => goals.map((g) => ({ minutes: m, goal: g, id: lockId(split.key, m, g.goal_key) })));
   const done = cells.filter((c) => locked[c.id]).length;
   return (
     <div className="px-3 py-2.5">
