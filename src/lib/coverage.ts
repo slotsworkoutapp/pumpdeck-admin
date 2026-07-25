@@ -10,6 +10,7 @@ export const SESSION_TIMES = [30, 45, 60];
 export const COVERAGE_GROUPS = ['chest', 'back', 'shoulders', 'legs', 'biceps', 'triceps', 'forearms', 'core'] as const;
 export const GROUP_WEIGHT: Record<string, number> = { chest: 2.5, back: 3, shoulders: 2.5, legs: 4, biceps: 1.5, triceps: 1.5, forearms: 1, core: 1.5 };
 export const GROUP_SHORT: Record<string, string> = { chest: 'Chest', back: 'Back', shoulders: 'Delts', legs: 'Legs', biceps: 'Bis', triceps: 'Tris', forearms: 'Fore', core: 'Core' };
+export const GROUP_LABEL: Record<string, string> = { chest: 'Chest', back: 'Back', shoulders: 'Shoulders', legs: 'Legs', biceps: 'Biceps', triceps: 'Triceps', forearms: 'Forearms', core: 'Core' };
 export const BALANCE_FACTOR = 0.6; // flag a group under 60% of its fair share
 
 // Weekly sets per group actually delivered by a generated/locked program.

@@ -8,7 +8,7 @@ import {
 } from '../../lib/content';
 import { generateProgram, weekdayLabel, type GenDay, type GenSlot } from '../../lib/generate';
 import { GROUP_ORDER } from '../../lib/bodymap';
-import { COVERAGE_GROUPS, GROUP_SHORT, perGroupSets, groupTarget, coverageStatus, statusChip } from '../../lib/coverage';
+import { COVERAGE_GROUPS, GROUP_LABEL, perGroupSets, groupTarget, coverageStatus, statusChip } from '../../lib/coverage';
 
 const HAS_MAP = new Set<string>(GROUP_ORDER);
 // The three session lengths the app actually offers — the whole scenario grid.
@@ -301,7 +301,14 @@ function CoverageStrip({ program, catalog }: { program: GenDay[]; catalog: Catal
           const status = coverageStatus(n, target);
           return (
             <div key={g} className="flex items-center gap-2">
-              <span className="w-12 shrink-0 text-sm font-semibold text-slate-700">{GROUP_SHORT[g]}</span>
+              <div className="flex w-32 shrink-0 items-center gap-1.5">
+                {HAS_MAP.has(g) ? (
+                  <img src={`/maps/${g}.svg`} alt="" className="size-6 shrink-0 object-contain" />
+                ) : (
+                  <span className="size-6 shrink-0" />
+                )}
+                <span className="text-sm font-semibold text-slate-700">{GROUP_LABEL[g]}</span>
+              </div>
               <span className={`shrink-0 rounded px-1.5 py-0.5 text-right text-sm font-bold tabular-nums ${statusChip(status)}`}>{n}/{target}</span>
               <div className="flex flex-1 flex-wrap gap-1">
                 {(perMuscleByGroup[g] ?? []).map((m) => (
