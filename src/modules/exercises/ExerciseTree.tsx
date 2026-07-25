@@ -13,12 +13,14 @@ interface GroupNode { key: string; label: string; count: number; muscles: Muscle
 export default function ExerciseTree({
   catalog,
   posters,
+  groupFilter,
   onOpen,
   onOpenMuscle,
   onOpenVariation,
 }: {
   catalog: Catalog;
   posters: Map<string, string>;
+  groupFilter?: string | null;
   onOpen: (id: string) => void;
   onOpenMuscle: (id: string) => void;
   onOpenVariation: (key: string) => void;
@@ -73,7 +75,7 @@ export default function ExerciseTree({
 
   return (
     <div className="space-y-4">
-      {groups.map((g) => (
+      {groups.filter((g) => !groupFilter || g.key === groupFilter).map((g) => (
         <div key={g.key} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-100 px-4 py-2">
             <span className="font-bold uppercase tracking-wide text-slate-700">{g.label}</span>
