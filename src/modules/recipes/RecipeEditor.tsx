@@ -130,7 +130,7 @@ export default function RecipeEditor() {
   return (
     <div className="mx-auto max-w-3xl p-6">
       <h1 className="mb-1 text-2xl font-bold text-slate-900">{isNew ? 'New recipe' : displayName || 'Edit recipe'}</h1>
-      <p className="mb-6 text-sm text-slate-500">Priority 1 = kept even in short sessions; higher = trimmed first when time is tight.</p>
+      <p className="mb-6 text-sm text-slate-500">Order matters: the generator fills a session in rounds by muscle — one exercise per muscle, then a second, etc. — so within each muscle, list your first-choice exercise first.</p>
 
       <div className="mb-6 grid grid-cols-3 gap-4">
         <Field label="Day type" hint="e.g. push, pull, legs">
@@ -181,7 +181,6 @@ export default function RecipeEditor() {
               <span>–</span>
               <Num label="" value={s.rep_high} onChange={(v) => setSlot(i, { rep_high: v })} />
               <Num label="rest(s)" value={s.rest_seconds} onChange={(v) => setSlot(i, { rest_seconds: v })} />
-              <Num label="priority" value={s.priority} onChange={(v) => setSlot(i, { priority: v })} />
             </div>
           </div>
         ))}
