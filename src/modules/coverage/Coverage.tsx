@@ -1,5 +1,7 @@
-import { useMemo } from 'react';
-import { useSplits, useRecipes, useCatalog, type ContentRecipe } from '../../lib/content';
+import { useEffect, useMemo, useState } from 'react';
+import { useSplits, useRecipes, useGoals, useCatalog } from '../../lib/content';
+import { generateProgram } from '../../lib/generate';
+import { SelectField } from '../../components/ui';
 
 // Muscle groups in display order + rough weekly-set minimums (MEV-ish). A group
 // that a split trains but leaves below its minimum is flagged red.
@@ -11,51 +13,63 @@ interface Row {
   key: string;
   name: string;
   perGroup: Record<string, number>;
-  declared: Set<string>;
-  untypedDays: string[]; // day names with no recipe
+  emptyDays: string[];
 }
 
 export default function Coverage() {
   const { splits, loading: ls } = useSplits();
   const { recipes, loading: lr } = useRecipes();
+  const { goals, loading: lg } = useGoals();
   const { catalog, loading: lc } = useCatalog();
 
-  const rows = useMemo<Row[]>(() => {
-    if (!splits || !recipes || !catalog) return [];
-    const byType = new Map<string, ContentRecipe>(recipes.map((r) => [r.day_type, r]));
-    const groupOf = (famKey: string) => catalog.familiesByKey.get(famKey)?.muscle_group_raw ?? '?';
-    return splits.map((s) => {
-      const perGroup: Record<string, number> = {};
-      const declared = new Set<string>();
-      const untypedDays: string[] = [];
-      for (const d of s.day_assignments) {
-        d.groups.forEach((g) => declared.add(g));
-        const recipe = d.day_type ? byType.get(d.day_type) : undefined;
-        if (!recipe) {
-          untypedDays.push(d.day_name);
-          continue;
-        }
-        for (const slot of recipe.slots) {
-          if (!slot.family_key) continue;
-          const g = groupOf(slot.family_key);
-          perGroup[g] = (perGroup[g] ?? 0) + slot.base_sets;
-        }
-      }
-      return { key: s.key, name: s.display_name, perGroup, declared, untypedDays };
-    });
-  }, [splits, recipes, catalog]);
+  const [minutes, setMinutes] = useState(60);
+  const [goalKey, setGoalKey] = useState('');
+  useEffect(() => {
+    if (goals?.length && !goals.some((g) => g.goal_key === goalKey)) setGoalKey(goals[0].goal_key);
+  }, [goals, goalKey]);
 
-  if (ls || lr || lc) return <div className="p-8 text-slate-400">Loading…</div>;
+  const goal = goals?.find((g) => g.goal_key === goalKey);
+
+  // Actual weekly sets per group at the chosen session length — i.e. what a user
+  // really gets after time-trimming + week-aware balancing, not the full menu.
+  const rows = useMemo<Row[]>(() => {
+    if (!splits || !recipes || !catalog || !goal) return [];
+    return splits.map((s) => {
+      const days = generateProgram(s, recipes, goal, minutes, catalog);
+      const perGroup: Record<string, number> = {};
+      const emptyDays: string[] = [];
+      for (const d of days) {
+        if (d.note) emptyDays.push(d.dayName);
+        for (const slot of d.slots) if (slot.group) perGroup[slot.group] = (perGroup[slot.group] ?? 0) + slot.sets;
+      }
+      return { key: s.key, name: s.display_name, perGroup, emptyDays };
+    });
+  }, [splits, recipes, catalog, goal, minutes]);
+
+  if (ls || lr || lg || lc) return <div className="p-8 text-slate-400">Loading…</div>;
 
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold text-slate-900">Coverage</h1>
-      <p className="mb-5 max-w-2xl text-sm text-slate-500">
-        Weekly sets per muscle group for each split, summed from its day recipes (before goal/time adjustments — this is the
-        full menu). <span className="font-semibold text-rose-600">Red</span> = the split trains this group but falls below a
-        rough weekly minimum. <span className="text-slate-400">Grey dash</span> = not trained by this split.
-        Note: <em>legs</em> and <em>back</em> are large groups (quads/hams/glutes/calves; lats/traps/erectors), so high totals there are expected.
+      <p className="mb-4 max-w-2xl text-sm text-slate-500">
+        Weekly sets per muscle group each split actually delivers <strong>at this session length</strong> — after time-trimming
+        and week-aware balancing. <span className="font-semibold text-rose-600">Red</span> = trained but below a rough weekly
+        minimum. <span className="text-slate-400">Grey dash</span> = not trained. Drag the slider to see the numbers move.
       </p>
+
+      <div className="mb-5 flex flex-wrap items-end gap-4">
+        <div className="w-80 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="mb-1 flex items-baseline justify-between">
+            <span className="text-xs font-semibold uppercase text-slate-500">Session length</span>
+            <span className="text-base font-bold tabular-nums text-slate-900">{minutes} min</span>
+          </div>
+          <input type="range" min={30} max={90} step={1} value={minutes} onChange={(e) => setMinutes(parseInt(e.target.value, 10))} className="w-full accent-indigo-600" />
+        </div>
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold uppercase text-slate-500">Goal</span>
+          <SelectField value={goalKey} onChange={setGoalKey} options={(goals ?? []).map((g) => ({ value: g.goal_key, label: g.display_name }))} />
+        </label>
+      </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-sm">
@@ -74,30 +88,21 @@ export default function Coverage() {
                 <td className="px-3 py-2 font-medium text-slate-800">{r.name}</td>
                 {GROUPS.map((g) => {
                   const n = r.perGroup[g] ?? 0;
-                  const trained = r.declared.has(g);
-                  const low = trained && n < (MIN[g] ?? 0);
+                  const low = n > 0 && n < (MIN[g] ?? 0);
                   return (
                     <td key={g} className="px-3 py-2 text-center tabular-nums">
-                      {!trained && n === 0 ? (
+                      {n === 0 ? (
                         <span className="text-slate-300">–</span>
                       ) : (
-                        <span
-                          className={
-                            low
-                              ? 'rounded bg-rose-100 px-1.5 py-0.5 font-semibold text-rose-700'
-                              : 'text-slate-700'
-                          }
-                        >
-                          {n}
-                        </span>
+                        <span className={low ? 'rounded bg-rose-100 px-1.5 py-0.5 font-semibold text-rose-700' : 'text-slate-700'}>{n}</span>
                       )}
                     </td>
                   );
                 })}
                 <td className="px-3 py-2 text-xs">
-                  {r.untypedDays.length > 0 ? (
+                  {r.emptyDays.length > 0 ? (
                     <span className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-700">
-                      {r.untypedDays.length} empty day{r.untypedDays.length > 1 ? 's' : ''}: {r.untypedDays.join(', ')}
+                      {r.emptyDays.length} empty day{r.emptyDays.length > 1 ? 's' : ''}
                     </span>
                   ) : (
                     <span className="text-emerald-600">✓</span>
