@@ -32,3 +32,28 @@ export function isLow(perGroup: Record<string, number>, g: string): boolean {
   const n = perGroup[g] ?? 0;
   return n > 0 && n < BALANCE_FACTOR * fairShareFn(perGroup)(g);
 }
+
+// The balanced "target" set count for a group in this program — its fair share,
+// rounded — so coverage reads as actual / target (e.g. 6 / 9).
+export function groupTarget(perGroup: Record<string, number>, g: string): number {
+  return Math.round(fairShareFn(perGroup)(g));
+}
+
+export type CoverageStatus = 'under' | 'on' | 'over';
+
+// Compare actual sets to the target with a small tolerance (±20%, min ±1 set), so
+// 6/6 reads "on", 6/9 reads "under", 9/6 reads "over" (too much).
+export function coverageStatus(actual: number, target: number): CoverageStatus {
+  if (target <= 0) return 'on';
+  const tol = Math.max(1, Math.round(target * 0.2));
+  if (actual < target - tol) return 'under';
+  if (actual > target + tol) return 'over';
+  return 'on';
+}
+
+// Tailwind classes for a coverage chip by status: red under, amber over, plain on.
+export function statusChip(s: CoverageStatus): string {
+  if (s === 'under') return 'bg-rose-100 text-rose-700';
+  if (s === 'over') return 'bg-amber-100 text-amber-700';
+  return 'text-slate-700';
+}

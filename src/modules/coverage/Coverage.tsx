@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSplits, useRecipes, useGoals, useCatalog } from '../../lib/content';
 import { generateProgram } from '../../lib/generate';
 import { SelectField } from '../../components/ui';
-import { COVERAGE_GROUPS as GROUPS, GROUP_SHORT as SHORT, SESSION_TIMES, perGroupSets, fairShareFn, BALANCE_FACTOR } from '../../lib/coverage';
+import { COVERAGE_GROUPS as GROUPS, GROUP_SHORT as SHORT, SESSION_TIMES, perGroupSets, groupTarget, coverageStatus, statusChip } from '../../lib/coverage';
 
 interface Row {
   key: string;
@@ -43,10 +43,11 @@ export default function Coverage() {
     <div className="p-6">
       <h1 className="text-2xl font-bold text-slate-900">Coverage</h1>
       <p className="mb-4 max-w-2xl text-sm text-slate-500">
-        Weekly sets per muscle group each split actually delivers <strong>at this session length</strong> — after time-trimming
-        and week-aware balancing. <span className="font-semibold text-rose-600">Red</span> = under-served <em>relative to the rest
-        of this split</em> (not an absolute minimum), so a small 2-day split reads green as long as it's balanced.
-        <span className="text-slate-400"> Grey dash</span> = not trained. Switch session length to see the numbers move.
+        Each cell is <strong>weekly sets delivered / balanced target</strong> for that group at this session length. The target is the
+        group's fair (weighted) share of the split's total sets — legs/back heavy, arms light — computed over only the groups it trains,
+        so a small balanced split reads on-target. <span className="font-semibold text-rose-600">Red</span> = under,
+        <span className="font-semibold text-amber-600"> amber</span> = over (too much).
+        <span className="text-slate-400"> Grey dash</span> = not trained.
       </p>
 
       <div className="mb-5 flex flex-wrap items-end gap-4">
@@ -80,24 +81,18 @@ export default function Coverage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
-              // Fair share is computed over the groups this split actually trains,
-              // so balance is judged among what it trains — not against groups it
-              // intentionally skips.
-              const fairShare = fairShareFn(r.perGroup);
-              return (
+            {rows.map((r) => (
               <tr key={r.key} className="border-b border-slate-100 last:border-0">
                 <td className="px-3 py-2 font-medium text-slate-800">{r.name}</td>
                 {GROUPS.map((g) => {
                   const n = r.perGroup[g] ?? 0;
-                  const low = n > 0 && n < BALANCE_FACTOR * fairShare(g);
+                  if (n === 0) return <td key={g} className="px-3 py-2 text-center tabular-nums"><span className="text-slate-300">–</span></td>;
+                  // Target = the group's balanced share of THIS split's volume.
+                  const target = groupTarget(r.perGroup, g);
+                  const status = coverageStatus(n, target);
                   return (
                     <td key={g} className="px-3 py-2 text-center tabular-nums">
-                      {n === 0 ? (
-                        <span className="text-slate-300">–</span>
-                      ) : (
-                        <span className={low ? 'rounded bg-rose-100 px-1.5 py-0.5 font-semibold text-rose-700' : 'text-slate-700'}>{n}</span>
-                      )}
+                      <span className={`rounded px-1.5 py-0.5 font-semibold ${statusChip(status)}`}>{n}/{target}</span>
                     </td>
                   );
                 })}
@@ -111,8 +106,7 @@ export default function Coverage() {
                   )}
                 </td>
               </tr>
-              );
-            })}
+            ))}
           </tbody>
         </table>
       </div>

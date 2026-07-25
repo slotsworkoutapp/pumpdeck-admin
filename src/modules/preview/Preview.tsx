@@ -8,7 +8,7 @@ import {
 } from '../../lib/content';
 import { generateProgram, weekdayLabel, type GenDay, type GenSlot } from '../../lib/generate';
 import { GROUP_ORDER } from '../../lib/bodymap';
-import { COVERAGE_GROUPS, GROUP_SHORT, perGroupSets, isLow } from '../../lib/coverage';
+import { COVERAGE_GROUPS, GROUP_SHORT, perGroupSets, groupTarget, coverageStatus, statusChip } from '../../lib/coverage';
 
 const HAS_MAP = new Set<string>(GROUP_ORDER);
 // The three session lengths the app actually offers — the whole scenario grid.
@@ -292,15 +292,17 @@ function CoverageStrip({ program, catalog }: { program: GenDay[]; catalog: Catal
     <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
       <div className="mb-2 flex items-baseline justify-between">
         <span className="text-xs font-semibold uppercase text-slate-500">Weekly coverage</span>
-        <span className="text-xs text-slate-400">{totalSets} sets · <span className="text-rose-600">red</span> = under its fair share</span>
+        <span className="text-xs text-slate-400">{totalSets} sets · sets / balanced target · <span className="text-rose-600">red</span> under · <span className="text-amber-600">amber</span> over</span>
       </div>
       <div className="grid gap-1.5">
         {trained.map((g) => {
-          const low = isLow(perGroup, g);
+          const n = perGroup[g];
+          const target = groupTarget(perGroup, g);
+          const status = coverageStatus(n, target);
           return (
             <div key={g} className="flex items-center gap-2">
-              <span className={`w-12 shrink-0 text-sm font-semibold ${low ? 'text-rose-600' : 'text-slate-700'}`}>{GROUP_SHORT[g]}</span>
-              <span className={`w-7 shrink-0 text-right text-sm font-bold tabular-nums ${low ? 'text-rose-700' : 'text-slate-900'}`}>{perGroup[g]}</span>
+              <span className="w-12 shrink-0 text-sm font-semibold text-slate-700">{GROUP_SHORT[g]}</span>
+              <span className={`shrink-0 rounded px-1.5 py-0.5 text-right text-sm font-bold tabular-nums ${statusChip(status)}`}>{n}/{target}</span>
               <div className="flex flex-1 flex-wrap gap-1">
                 {(perMuscleByGroup[g] ?? []).map((m) => (
                   <span key={m.name} className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-500">
