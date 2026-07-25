@@ -4,8 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useCatalog, type ContentExercise } from '../../lib/content';
 import { validateCatalog } from './validate';
 import ExerciseTree, { Thumb } from './ExerciseTree';
-import { BodyMap } from '../../components/BodyMap';
-import { GROUP_MAP, GROUP_ORDER } from '../../lib/bodymap';
+import { GROUP_ORDER, GROUP_COLORS } from '../../lib/bodymap';
 
 export default function ExercisesList() {
   const { catalog, error, loading } = useCatalog();
@@ -133,17 +132,17 @@ export default function ExercisesList() {
           <div className="mb-4 flex flex-wrap gap-2">
             {GROUP_ORDER.map((g) => {
               const active = groupFilter === g;
-              const hi = new Set(GROUP_MAP[g].slugs);
               return (
                 <button
                   key={g}
                   onClick={() => setGroupFilter(active ? null : g)}
+                  style={active ? { borderColor: GROUP_COLORS[g], backgroundColor: `${GROUP_COLORS[g]}12` } : undefined}
                   className={`flex w-20 flex-col items-center rounded-xl border px-2 py-2 transition ${
-                    active ? 'border-indigo-500 bg-indigo-50 text-indigo-600' : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300'
+                    active ? '' : 'border-slate-200 bg-white opacity-70 hover:opacity-100'
                   }`}
                 >
-                  <BodyMap side={GROUP_MAP[g].view} highlight={hi} className="h-14 w-full" />
-                  <span className={`mt-1 text-xs font-semibold capitalize ${active ? 'text-indigo-700' : 'text-slate-600'}`}>{g}</span>
+                  <img src={`/maps/${g}.svg`} alt="" className="h-14 w-full object-contain" />
+                  <span className="mt-1 text-xs font-semibold capitalize" style={active ? { color: GROUP_COLORS[g] } : { color: '#475569' }}>{g}</span>
                 </button>
               );
             })}

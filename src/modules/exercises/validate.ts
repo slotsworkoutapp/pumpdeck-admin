@@ -41,8 +41,10 @@ export function validateCatalog(c: Catalog): Issue[] {
       }
       familyMemberCount.set(e.movement_family_key, (familyMemberCount.get(e.movement_family_key) ?? 0) + 1);
     }
-    // Sanity on rest.
-    if (e.default_rest_seconds <= 0) {
+    // Sanity on rest — but cardio and mobility (warm-up/cool-down) are meant to
+    // have zero rest, so don't flag those.
+    const zeroRestOk = e.type_raw === 'cardio' || e.kind_raw === 'warmup' || e.kind_raw === 'cooldown';
+    if (e.default_rest_seconds < 0 || (e.default_rest_seconds === 0 && !zeroRestOk)) {
       issues.push({ severity: 'warning', entity: e.name, message: 'Rest is 0 or negative.' });
     }
   }

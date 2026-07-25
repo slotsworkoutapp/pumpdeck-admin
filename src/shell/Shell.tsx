@@ -8,7 +8,7 @@ export default function Shell() {
     <div className="flex min-h-screen bg-slate-100 text-slate-900">
       <aside className="flex w-56 flex-col border-r border-slate-200 bg-white">
         <div className="flex items-center gap-2 px-4 py-4">
-          <span className="grid size-8 place-items-center rounded-lg bg-slate-900 text-sm font-black text-white">P</span>
+          <img src="/logo.svg" alt="PumpDeck" className="size-8 rounded-lg" />
           <span className="font-bold">PumpDeck Admin</span>
         </div>
         <nav className="flex-1 px-2">

@@ -1,26 +1,17 @@
-// Body silhouette rendering, ported from the MuscleMap package (Melih Colpan,
-// MIT License) — the same art the iOS app uses. bodymap.json holds the SVG path
-// strings per region for the male front/back figures.
-import raw from './bodymap.json';
-
-export type BodySide = 'front' | 'back';
-interface Side {
-  viewBox: string;
-  parts: { slug: string; paths: string[] }[];
-}
-export const BODY = raw as unknown as Record<BodySide, Side>;
-
-// Our 8 muscle GROUPS → MuscleMap region slugs, plus the view that best shows
-// the group (front for chest/abs/quads/biceps/delts; back for lats/hams/tris).
-export const GROUP_MAP: Record<string, { slugs: string[]; view: BodySide }> = {
-  chest: { slugs: ['chest', 'upperChest', 'lowerChest'], view: 'front' },
-  back: { slugs: ['upperBack', 'lowerBack', 'trapezius'], view: 'back' },
-  shoulders: { slugs: ['deltoids', 'frontDeltoid'], view: 'front' },
-  legs: { slugs: ['quadriceps', 'innerQuad', 'outerQuad', 'adductors', 'calves', 'tibialis', 'hamstring', 'gluteal'], view: 'front' },
-  core: { slugs: ['abs', 'upperAbs', 'lowerAbs', 'obliques', 'serratus'], view: 'front' },
-  biceps: { slugs: ['biceps'], view: 'front' },
-  triceps: { slugs: ['triceps'], view: 'back' },
-  forearms: { slugs: ['forearm'], view: 'front' },
-};
+// Muscle-group filter metadata for the Exercises page. The zoomed, colored group
+// silhouettes live as static SVGs in /public/maps/<group>.svg (shared with the
+// marketing site; derived from the MuscleMap package — see ATTRIBUTIONS.md).
 
 export const GROUP_ORDER = ['chest', 'back', 'shoulders', 'legs', 'core', 'biceps', 'triceps', 'forearms'] as const;
+
+// Brand color per muscle group (matches the app + the /public/maps SVGs).
+export const GROUP_COLORS: Record<string, string> = {
+  chest: '#DC2626',
+  back: '#2563EB',
+  shoulders: '#7C3AED',
+  legs: '#16A34A',
+  core: '#CA8A04',
+  biceps: '#EA580C',
+  triceps: '#DB2777',
+  forearms: '#0891B2',
+};
