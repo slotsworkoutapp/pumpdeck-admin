@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabase';
 
+// Friendly label for an exercise kind. The stored value 'cooldown' shows as
+// "stretch" (lifters say stretch, not cool down).
+export const kindLabel = (k: string) => (k === 'cooldown' ? 'stretch' : k === 'warmup' ? 'warm-up' : k);
+
 export interface ContentMuscle {
   id: string;
   name: string;

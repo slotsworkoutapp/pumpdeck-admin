@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { Catalog, ContentExercise } from '../../lib/content';
+import { kindLabel, type Catalog, type ContentExercise } from '../../lib/content';
 import { GROUP_ORDER as MAPPED_GROUPS } from '../../lib/bodymap';
 
 const HAS_MAP = new Set<string>(MAPPED_GROUPS);
@@ -158,7 +158,7 @@ function ExRow({ e, secondary, poster, onOpen }: { e: ContentExercise; secondary
     >
       <Thumb url={poster} />
       <span className="font-semibold text-slate-800">{e.name}</span>
-      {e.kind_raw !== 'normal' && <span className="text-[10px] font-semibold uppercase text-slate-400">{e.kind_raw}</span>}
+      {e.kind_raw !== 'normal' && <span className="text-[10px] font-semibold uppercase text-slate-400">{kindLabel(e.kind_raw)}</span>}
       {!e.enabled && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">off</span>}
       {secondary && <span className="truncate text-xs text-slate-400">· {secondary}</span>}
       <span className="ml-auto shrink-0 tabular-nums text-xs text-slate-400">{e.default_rest_seconds}s</span>

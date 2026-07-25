@@ -9,7 +9,12 @@ import ExerciseMedia from './ExerciseMedia';
 const NAMESPACE = '9e1b7c42-1f3a-4d58-9a2e-6c0b5d8f44a1'; // == SeedID namespace
 
 const TYPES = ['reps', 'cardio', 'timed'];
-const KINDS = ['normal', 'warmup', 'cooldown'];
+// value stays 'cooldown' (what the app expects) but shows as "Stretch".
+const KIND_OPTIONS = [
+  { value: 'normal', label: 'Normal' },
+  { value: 'warmup', label: 'Warm-up' },
+  { value: 'cooldown', label: 'Stretch' },
+];
 
 const blank: Omit<ContentExercise, 'id'> = {
   name: '',
@@ -104,7 +109,7 @@ export default function ExerciseEditor() {
             <SelectField value={form.type_raw} onChange={(v) => set('type_raw', v)} options={TYPES.map((t) => ({ value: t, label: t }))} />
           </Field>
           <Field label="Kind">
-            <SelectField value={form.kind_raw} onChange={(v) => set('kind_raw', v)} options={KINDS.map((k) => ({ value: k, label: k }))} />
+            <SelectField value={form.kind_raw} onChange={(v) => set('kind_raw', v)} options={KIND_OPTIONS} />
           </Field>
         </div>
 

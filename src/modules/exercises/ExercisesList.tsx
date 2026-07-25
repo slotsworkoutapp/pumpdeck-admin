@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { useCatalog, type ContentExercise } from '../../lib/content';
+import { useCatalog, kindLabel, type ContentExercise } from '../../lib/content';
 import { validateCatalog } from './validate';
 import ExerciseTree, { Thumb } from './ExerciseTree';
 import { GROUP_ORDER, GROUP_COLORS } from '../../lib/bodymap';
@@ -201,7 +201,7 @@ function Row({ e, primary, family, secondary, poster, onOpen }: { e: ContentExer
       </td>
       <td className="px-4 py-2 text-slate-500">
         {e.type_raw}
-        {e.kind_raw !== 'normal' ? ` · ${e.kind_raw}` : ''}
+        {e.kind_raw !== 'normal' ? ` · ${kindLabel(e.kind_raw)}` : ''}
       </td>
       <td className="px-4 py-2 text-slate-700">{primary}</td>
       <td className="px-4 py-2 text-slate-500">{family}</td>
