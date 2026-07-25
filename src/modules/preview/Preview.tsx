@@ -284,9 +284,7 @@ function CoverageStrip({ program, catalog }: { program: GenDay[]; catalog: Catal
     return map;
   }, [program, catalog]);
 
-  const trained = COVERAGE_GROUPS.filter((g) => (perGroup[g] ?? 0) > 0);
-  const totalSets = trained.reduce((t, g) => t + perGroup[g], 0);
-  if (!trained.length) return null;
+  const totalSets = COVERAGE_GROUPS.reduce((t, g) => t + (perGroup[g] ?? 0), 0);
 
   return (
     <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -295,12 +293,13 @@ function CoverageStrip({ program, catalog }: { program: GenDay[]; catalog: Catal
         <span className="text-xs text-slate-400">{totalSets} sets · sets / balanced target · <span className="text-rose-600">red</span> under · <span className="text-amber-600">amber</span> over</span>
       </div>
       <div className="grid gap-1.5">
-        {trained.map((g) => {
-          const n = perGroup[g];
-          const target = groupTarget(perGroup, g);
+        {COVERAGE_GROUPS.map((g) => {
+          const n = perGroup[g] ?? 0;
+          const target = n > 0 ? groupTarget(perGroup, g) : 0;
           const status = coverageStatus(n, target);
+          const untrained = n === 0;
           return (
-            <div key={g} className="flex items-center gap-2">
+            <div key={g} className={`flex items-center gap-2 ${untrained ? 'opacity-45' : ''}`}>
               <div className="flex w-32 shrink-0 items-center gap-1.5">
                 {HAS_MAP.has(g) ? (
                   <img src={`/maps/${g}.svg`} alt="" className="size-6 shrink-0 object-contain" />
@@ -309,7 +308,7 @@ function CoverageStrip({ program, catalog }: { program: GenDay[]; catalog: Catal
                 )}
                 <span className="text-sm font-semibold text-slate-700">{GROUP_LABEL[g]}</span>
               </div>
-              <span className={`shrink-0 rounded px-1.5 py-0.5 text-right text-sm font-bold tabular-nums ${statusChip(status)}`}>{n}/{target}</span>
+              <span className={`shrink-0 rounded px-1.5 py-0.5 text-right text-sm font-bold tabular-nums ${untrained ? 'text-slate-400' : statusChip(status)}`}>{n}/{target}</span>
               <div className="flex flex-1 flex-wrap gap-1">
                 {(perMuscleByGroup[g] ?? []).map((m) => (
                   <span key={m.name} className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-500">
