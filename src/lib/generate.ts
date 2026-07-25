@@ -38,6 +38,7 @@ export interface GenSlot {
   kind: 'variation' | 'muscle';
   group: string | null; // muscle group (for the mini map)
   muscle: string; // the specific muscle it targets (the round-robin balances on this)
+  familyKey: string | null; // the variation key (for week-wide variation coverage)
   sets: number;
   reps: number; // a single exact target (midpoint of the goal-adjusted range)
   rest: number;
@@ -88,7 +89,7 @@ function slotMuscle(s: ContentSlot, familyMuscle: Map<string, string>): string {
 // `weeklySets` is the running per-group set count so far this week — the day
 // leads with whichever muscles are furthest behind, so the WEEK stays balanced
 // even when no single day can fit every muscle.
-function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: ContentGoal, budgetMinutes: number, catalog: Catalog, familyMuscle: Map<string, string>, weeklySets: Map<string, number>): GenDay {
+function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: ContentGoal, budgetMinutes: number, catalog: Catalog, familyMuscle: Map<string, string>, weeklySets: Map<string, number>, usedVariations: Set<string>): GenDay {
   const base: GenDay = { weekday: day.weekday, dayName: day.day_name, dayType: day.day_type, slots: [], dropped: 0, estMinutes: 0 };
   if (!recipe) {
     return { ...base, note: day.day_type ? `No "${day.day_type}" recipe yet` : 'No recipe assigned' };
@@ -120,6 +121,16 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
     const g = slotMuscle(a.src, familyMuscle); // balance per MUSCLE (calves ≠ quads ≠ glutes)
     if (!byGroup.has(g)) byGroup.set(g, []);
     byGroup.get(g)!.push(a);
+  }
+  // Within each muscle, lead with a variation NOT yet used this week — so the
+  // week covers as many distinct variations as possible (flat press one day, fly
+  // the next) instead of repeating the same one. Recipe order breaks ties.
+  for (const list of byGroup.values()) {
+    list.sort((a, b) => {
+      const ua = usedVariations.has(a.src.family_key ?? '') ? 1 : 0;
+      const ub = usedVariations.has(b.src.family_key ?? '') ? 1 : 0;
+      return ua !== ub ? ua - ub : a.src.sort_order - b.src.sort_order;
+    });
   }
   // Lead with the muscles furthest behind for the week (stable sort keeps the
   // recipe's order as the tiebreak among equally-trained groups).
@@ -161,6 +172,7 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
     kind: a.src.slot_kind,
     group: slotGroup(a.src, catalog),
     muscle: slotMuscle(a.src, familyMuscle),
+    familyKey: a.src.slot_kind === 'variation' ? a.src.family_key : null,
     sets: chosenSets.get(a.src)!,
     reps: snapReps(a.repLow, a.repHigh),
     rest: a.rest,
@@ -179,15 +191,18 @@ export function generateProgram(
 ): GenDay[] {
   const recipeByType = new Map(recipes.map((r) => [r.day_type, r]));
   const familyMuscle = buildFamilyMuscle(catalog);
-  // Build the days in weekday order, carrying a running per-MUSCLE set tally so
-  // each day can prioritize the muscles the week has under-trained so far.
+  // Carried across the week: per-MUSCLE set tally (each day leads with muscles
+  // under-trained so far) and the set of variations already used (each muscle
+  // leads with a variation not yet used, to maximize distinct-variation coverage).
   const weeklySets = new Map<string, number>();
+  const usedVariations = new Set<string>();
   return [...split.day_assignments]
     .sort((a, b) => a.weekday - b.weekday)
     .map((d) => {
-      const day = buildDay(d, d.day_type ? recipeByType.get(d.day_type) : undefined, goal, ceilingMinutes, catalog, familyMuscle, weeklySets);
+      const day = buildDay(d, d.day_type ? recipeByType.get(d.day_type) : undefined, goal, ceilingMinutes, catalog, familyMuscle, weeklySets, usedVariations);
       for (const s of day.slots) {
         weeklySets.set(s.muscle, (weeklySets.get(s.muscle) ?? 0) + s.sets);
+        if (s.familyKey) usedVariations.add(s.familyKey);
       }
       return day;
     });
