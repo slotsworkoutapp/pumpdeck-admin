@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth';
 export default function Shell() {
   const { session, signOut } = useAuth();
   return (
-    <div className="flex min-h-screen bg-slate-100 text-slate-900">
+    <div className="flex h-screen overflow-hidden bg-slate-100 text-slate-900">
       <aside className="flex w-56 flex-col border-r border-slate-200 bg-white">
         <div className="flex items-center gap-2 px-4 py-4">
           <img src="/logo.svg" alt="PumpDeck" className="size-8 rounded-lg" />

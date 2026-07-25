@@ -56,7 +56,7 @@ export default function Preview() {
   const toggleReviewed = (id: string) => setReviewed((r) => ({ ...r, [id]: !r[id] }));
 
   return (
-    <div className="flex h-full min-h-screen">
+    <div className="flex h-full">
       {/* ---- Scenario checklist ---- */}
       <aside className="w-80 shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50">
         <div className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-4 py-3">
