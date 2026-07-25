@@ -16,8 +16,14 @@ export const TIME_BRACKETS = [
 // Estimated wall-clock for a slot, counting REST (the big driver). Each working
 // set takes ~40s of effort plus its rest period. This is why strength (long
 // rests) fits fewer exercises than hypertrophy in the same session.
-const SET_WORK_SECONDS = 40;
-export const slotMinutes = (sets: number, rest: number) => (sets * (SET_WORK_SECONDS + rest)) / 60;
+// Estimated wall-clock per exercise. Each working set is ~45s of effort plus its
+// rest; on top of that every exercise carries ~2 min of overhead — walking to
+// the equipment, loading it, and warm-up sets before the working sets. Without
+// that overhead an 8-exercise day reads ~20 min too short.
+const SET_WORK_SECONDS = 45;
+const EXERCISE_OVERHEAD_SECONDS = 120;
+export const slotMinutes = (sets: number, rest: number) =>
+  (EXERCISE_OVERHEAD_SECONDS + sets * (SET_WORK_SECONDS + rest)) / 60;
 
 // Real programs use "nice" rep targets, never 11/13/14. Snap the range's
 // midpoint to the closest conventional number (ties resolve to the lower one).
