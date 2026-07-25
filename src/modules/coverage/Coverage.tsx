@@ -3,10 +3,14 @@ import { useSplits, useRecipes, useGoals, useCatalog } from '../../lib/content';
 import { generateProgram } from '../../lib/generate';
 import { SelectField } from '../../components/ui';
 
-// Muscle groups in display order + rough weekly-set minimums (MEV-ish). A group
-// that a split trains but leaves below its minimum is flagged red.
+// Muscle groups in display order. Instead of an absolute weekly minimum (which
+// unfairly flags small 2–3 day splits), we judge BALANCE: each group's fair
+// share of a split's total volume, weighted by how much volume it should get
+// (legs/back big, arms/forearms small). A group is flagged only if it gets well
+// below its fair share for THAT split — so a balanced small split reads all-green.
 const GROUPS = ['chest', 'back', 'shoulders', 'legs', 'biceps', 'triceps', 'forearms', 'core'] as const;
-const MIN: Record<string, number> = { chest: 10, back: 10, shoulders: 8, legs: 10, biceps: 8, triceps: 8, forearms: 4, core: 6 };
+const WEIGHT: Record<string, number> = { chest: 2.5, back: 3, shoulders: 2.5, legs: 4, biceps: 1.5, triceps: 1.5, forearms: 1, core: 1.5 };
+const BALANCE_FACTOR = 0.6; // flag if a group gets < 60% of its fair share
 const SHORT: Record<string, string> = { chest: 'Chest', back: 'Back', shoulders: 'Delts', legs: 'Legs', biceps: 'Bis', triceps: 'Tris', forearms: 'Fore', core: 'Core' };
 
 interface Row {
@@ -53,8 +57,9 @@ export default function Coverage() {
       <h1 className="text-2xl font-bold text-slate-900">Coverage</h1>
       <p className="mb-4 max-w-2xl text-sm text-slate-500">
         Weekly sets per muscle group each split actually delivers <strong>at this session length</strong> — after time-trimming
-        and week-aware balancing. <span className="font-semibold text-rose-600">Red</span> = trained but below a rough weekly
-        minimum. <span className="text-slate-400">Grey dash</span> = not trained. Drag the slider to see the numbers move.
+        and week-aware balancing. <span className="font-semibold text-rose-600">Red</span> = under-served <em>relative to the rest
+        of this split</em> (not an absolute minimum), so a small 2-day split reads green as long as it's balanced.
+        <span className="text-slate-400"> Grey dash</span> = not trained. Drag the slider to see the numbers move.
       </p>
 
       <div className="mb-5 flex flex-wrap items-end gap-4">
@@ -83,12 +88,20 @@ export default function Coverage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {rows.map((r) => {
+              // Fair share is computed over the groups this split actually trains,
+              // so balance is judged among what it trains — not against groups it
+              // intentionally skips.
+              const trained = GROUPS.filter((g) => (r.perGroup[g] ?? 0) > 0);
+              const total = trained.reduce((t, g) => t + r.perGroup[g], 0);
+              const weightSum = trained.reduce((t, g) => t + WEIGHT[g], 0);
+              const fairShare = (g: string) => (weightSum ? (total * WEIGHT[g]) / weightSum : 0);
+              return (
               <tr key={r.key} className="border-b border-slate-100 last:border-0">
                 <td className="px-3 py-2 font-medium text-slate-800">{r.name}</td>
                 {GROUPS.map((g) => {
                   const n = r.perGroup[g] ?? 0;
-                  const low = n > 0 && n < (MIN[g] ?? 0);
+                  const low = n > 0 && n < BALANCE_FACTOR * fairShare(g);
                   return (
                     <td key={g} className="px-3 py-2 text-center tabular-nums">
                       {n === 0 ? (
@@ -109,7 +122,8 @@ export default function Coverage() {
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
