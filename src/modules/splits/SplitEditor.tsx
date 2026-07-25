@@ -15,12 +15,14 @@ const slotLabel = (s: ContentSlot, c: Catalog): string =>
 
 export default function SplitEditor() {
   const { key } = useParams();
+  const isNew = key === 'new';
   const nav = useNavigate();
   const { splits, loading } = useSplits();
   const { recipes } = useRecipes();
   const { catalog } = useCatalog();
   const recipeByType = useMemo(() => new Map((recipes ?? []).map((r) => [r.day_type, r])), [recipes]);
 
+  const [newKey, setNewKey] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [blurb, setBlurb] = useState('');
   const [days, setDays] = useState(3);
@@ -30,7 +32,7 @@ export default function SplitEditor() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!splits) return;
+    if (isNew || !splits) return;
     const s = splits.find((x) => x.key === key);
     if (s) {
       setDisplayName(s.display_name);
@@ -39,7 +41,7 @@ export default function SplitEditor() {
       setEnabled(s.enabled);
       setAssignments(s.day_assignments.map((d) => ({ ...d })));
     }
-  }, [splits, key]);
+  }, [splits, key, isNew]);
 
   const recipeOptions = useMemo(
     () => (recipes ?? []).map((r) => ({ value: r.day_type, label: `${r.display_name} (${r.day_type})` })),
@@ -50,16 +52,33 @@ export default function SplitEditor() {
     setAssignments((a) => a.map((d, j) => (j === i ? { ...d, ...patch } : d)));
 
   async function save() {
-    setSaving(true);
     setError(null);
-    const { error } = await supabase.from('content_split_templates').update({
+    if (!displayName.trim()) return setError('Display name is required.');
+    const payload = {
       display_name: displayName.trim(),
       blurb: blurb.trim() || null,
       min_days: days,
       max_days: days,
       enabled,
       day_assignments: assignments,
-    }).eq('key', key);
+    };
+    setSaving(true);
+    let error;
+    if (isNew) {
+      const k = newKey.trim();
+      if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(k)) {
+        setSaving(false);
+        return setError('Key must start with a letter and contain only letters/numbers, no spaces (e.g. sixPushPullArms).');
+      }
+      if ((splits ?? []).some((s) => s.key === k)) {
+        setSaving(false);
+        return setError(`Key "${k}" already exists.`);
+      }
+      const maxSort = Math.max(0, ...(splits ?? []).map((s) => s.sort_order));
+      ({ error } = await supabase.from('content_split_templates').insert({ key: k, sort_order: maxSort + 1, ...payload }));
+    } else {
+      ({ error } = await supabase.from('content_split_templates').update(payload).eq('key', key));
+    }
     setSaving(false);
     if (error) setError(error.message);
     else nav('/splits');
@@ -69,8 +88,16 @@ export default function SplitEditor() {
 
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <h1 className="mb-1 text-2xl font-bold text-slate-900">{displayName || 'Edit split'}</h1>
-      <p className="mb-6 font-mono text-xs text-slate-400">{key}</p>
+      <h1 className="mb-1 text-2xl font-bold text-slate-900">{isNew ? 'New split' : displayName || 'Edit split'}</h1>
+      {isNew ? (
+        <div className="mb-6 mt-2">
+          <Field label="Key" hint="letters/numbers, no spaces — the app matches splits on this and it can't change later">
+            <TextField value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="sixPushPullArms" />
+          </Field>
+        </div>
+      ) : (
+        <p className="mb-6 font-mono text-xs text-slate-400">{key}</p>
+      )}
 
       <div className="mb-6 space-y-4">
         <div className="grid grid-cols-3 gap-4">

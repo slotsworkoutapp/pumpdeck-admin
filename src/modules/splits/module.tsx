@@ -8,6 +8,7 @@ export const splitsModule: AdminModule = {
   icon: <CalendarIcon />,
   routes: [
     { element: <SplitsList /> },
+    { path: 'new', element: <SplitEditor /> },
     { path: ':key', element: <SplitEditor /> },
   ],
 };

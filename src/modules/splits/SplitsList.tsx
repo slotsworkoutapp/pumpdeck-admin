@@ -16,11 +16,19 @@ export default function SplitsList() {
 
   return (
     <div className="p-6">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-slate-900">Splits</h1>
-        <p className="text-sm text-slate-500">
-          The program-type options a user picks from. Each day is tagged with a recipe type (colored = a recipe exists).
-        </p>
+      <div className="mb-4 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Splits</h1>
+          <p className="text-sm text-slate-500">
+            The program-type options a user picks from. Each day is tagged with a recipe type (colored = a recipe exists).
+          </p>
+        </div>
+        <button
+          onClick={() => nav('/splits/new')}
+          className="shrink-0 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+        >
+          + New split
+        </button>
       </div>
 
       <div className="space-y-3">
