@@ -272,15 +272,15 @@ function SplitGroup({
 function CoverageStrip({ program, catalog }: { program: GenDay[]; catalog: Catalog }) {
   const perGroup = perGroupSets(program);
   const perMuscleByGroup = useMemo(() => {
+    // Sets actually delivered, keyed by muscle id.
     const acc: Record<string, number> = {};
     for (const d of program) for (const s of d.slots) if (s.muscle) acc[s.muscle] = (acc[s.muscle] ?? 0) + s.sets;
-    const map: Record<string, { name: string; sets: number }[]> = {};
-    for (const [mid, sets] of Object.entries(acc)) {
-      const m = catalog.musclesById.get(mid);
-      const g = m?.group_raw ?? 'other';
-      (map[g] ??= []).push({ name: m?.name ?? mid, sets });
+    // Every muscle in each group (from the catalog), zeros included, in catalog order.
+    const map: Record<string, { name: string; sets: number; order: number }[]> = {};
+    for (const m of catalog.muscles) {
+      (map[m.group_raw] ??= []).push({ name: m.name, sets: acc[m.id] ?? 0, order: m.sort_order });
     }
-    for (const g of Object.keys(map)) map[g].sort((a, b) => b.sets - a.sets);
+    for (const g of Object.keys(map)) map[g].sort((a, b) => a.order - b.order);
     return map;
   }, [program, catalog]);
 
@@ -311,8 +311,8 @@ function CoverageStrip({ program, catalog }: { program: GenDay[]; catalog: Catal
               <span className={`shrink-0 rounded px-1.5 py-0.5 text-right text-sm font-bold tabular-nums ${untrained ? 'text-slate-400' : statusChip(status)}`}>{n}/{target}</span>
               <div className="flex flex-1 flex-wrap gap-1">
                 {(perMuscleByGroup[g] ?? []).map((m) => (
-                  <span key={m.name} className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-500">
-                    {m.name} <span className="font-semibold tabular-nums text-slate-800">{m.sets}</span>
+                  <span key={m.name} className={`rounded border px-1.5 py-0.5 text-xs ${m.sets === 0 ? 'border-slate-100 bg-slate-50 text-slate-400' : 'border-slate-200 bg-white text-slate-500'}`}>
+                    {m.name} <span className={`font-semibold tabular-nums ${m.sets === 0 ? 'text-slate-400' : 'text-slate-800'}`}>{m.sets}</span>
                   </span>
                 ))}
               </div>
