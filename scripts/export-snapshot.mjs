@@ -28,12 +28,16 @@ const env = Object.fromEntries(
 
 const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY);
 
-const [mu, fa, ex] = await Promise.all([
+const [mu, fa, ex, sp, rec, sl, go] = await Promise.all([
   supabase.from('content_muscles').select('*').eq('enabled', true).order('sort_order'),
   supabase.from('content_families').select('*').eq('enabled', true).order('sort_order'),
   supabase.from('content_exercises').select('*').eq('enabled', true).order('sort_order'),
+  supabase.from('content_split_templates').select('*').eq('enabled', true).order('sort_order'),
+  supabase.from('content_day_recipes').select('*').eq('enabled', true).order('sort_order'),
+  supabase.from('content_day_recipe_slots').select('*').order('sort_order'),
+  supabase.from('content_goal_profiles').select('*').eq('enabled', true).order('sort_order'),
 ]);
-const err = mu.error || fa.error || ex.error;
+const err = mu.error || fa.error || ex.error || sp.error || rec.error || sl.error || go.error;
 if (err) {
   console.error('Fetch failed:', err.message);
   process.exit(1);
@@ -57,8 +61,29 @@ const exercises = ex.data.map((e) => ({
   sort_order: e.sort_order,
 }));
 
-const snapshot = { version: 1, generatedAt: null, muscles, families, exercises };
+// Program-gen v2: splits, day recipes (with their slots nested), goal profiles.
+const splits = sp.data.map((s) => ({
+  key: s.key, display_name: s.display_name, blurb: s.blurb,
+  min_days: s.min_days, max_days: s.max_days, day_assignments: s.day_assignments, sort_order: s.sort_order,
+}));
+const recipes = rec.data.map((r) => ({
+  id: r.id, day_type: r.day_type, display_name: r.display_name, sort_order: r.sort_order,
+  slots: sl.data
+    .filter((s) => s.recipe_id === r.id)
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((s) => ({
+      sort_order: s.sort_order, slot_kind: s.slot_kind, family_key: s.family_key, muscle_id: s.muscle_id,
+      base_sets: s.base_sets, rep_low: s.rep_low, rep_high: s.rep_high, rest_seconds: s.rest_seconds, priority: s.priority,
+    })),
+}));
+const goals = go.data.map((g) => ({
+  goal_key: g.goal_key, display_name: g.display_name,
+  rep_shift: g.rep_shift, rest_multiplier: g.rest_multiplier, set_shift: g.set_shift, sort_order: g.sort_order,
+}));
+
+const snapshot = { version: 2, generatedAt: null, muscles, families, exercises, splits, recipes, goals };
 writeFileSync(APP_SNAPSHOT, JSON.stringify(snapshot, null, 2));
 console.log(`✓ ${muscles.length} muscles · ${families.length} families · ${exercises.length} exercises`);
+console.log(`✓ ${splits.length} splits · ${recipes.length} recipes · ${goals.length} goals`);
 console.log(`✓ wrote ${APP_SNAPSHOT}`);
 console.log('  Rebuild the app to bundle it — new users will seed from this.');
