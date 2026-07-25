@@ -86,14 +86,34 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
       mins: slotMinutes(sets, rest),
     };
   });
-  // Fill the time budget by priority (then order). When the next exercise doesn't
+  // Balance-first fill: go in ROUNDS by muscle group — one exercise for each
+  // muscle the day trains, then a second per muscle, etc. — so any session length
+  // stays balanced across the day's muscles instead of over-indexing the first
+  // one (a 35-min push still gets its triceps work). Groups are ordered by where
+  // they first appear in the recipe; within a group, by the recipe's order.
+  const bySortOrder = [...adjusted].sort((a, b) => a.src.sort_order - b.src.sort_order);
+  const byGroup = new Map<string, typeof adjusted>();
+  for (const a of bySortOrder) {
+    const g = slotGroup(a.src, catalog) ?? a.src.family_key ?? 'other';
+    if (!byGroup.has(g)) byGroup.set(g, []);
+    byGroup.get(g)!.push(a);
+  }
+  const groupList = [...byGroup.keys()];
+  const maxRounds = Math.max(0, ...[...byGroup.values()].map((v) => v.length));
+  const sequence: typeof adjusted = [];
+  for (let r = 0; r < maxRounds; r++) {
+    for (const g of groupList) {
+      const v = byGroup.get(g)!;
+      if (r < v.length) sequence.push(v[r]);
+    }
+  }
+
+  // Fill the time budget in that round-robin order. When the next exercise doesn't
   // fully fit, don't drop it whole — trim its SETS to fill the remaining time, so
-  // the session lands close to the requested length instead of jumping by a whole
-  // exercise (~10 min) at a time. Longer rests (strength) eat the budget faster.
-  const byPriority = [...adjusted].sort((a, b) => a.src.priority - b.src.priority || a.src.sort_order - b.src.sort_order);
+  // the session lands close to the requested length. Longer rests eat more budget.
   const chosenSets = new Map<ContentSlot, number>();
   let used = 0;
-  for (const a of byPriority) {
+  for (const a of sequence) {
     if (used + a.mins <= budgetMinutes) {
       chosenSets.set(a.src, a.sets);
       used += a.mins;
