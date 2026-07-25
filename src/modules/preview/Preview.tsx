@@ -105,7 +105,7 @@ function DayCard({ day }: { day: GenDay }) {
             <li key={i} className="flex items-center gap-2 px-4 py-2 text-sm">
               <span className="flex-1 font-semibold text-slate-800">{s.label}</span>
               {s.kind === 'muscle' && <span className="text-[10px] font-bold uppercase text-indigo-500">muscle</span>}
-              <span className="tabular-nums text-slate-500">{s.sets} × {s.repLow}–{s.repHigh}</span>
+              <span className="tabular-nums text-slate-500">{s.sets} × {s.reps}</span>
               <span className="w-12 text-right tabular-nums text-xs text-slate-400">{s.rest}s</span>
             </li>
           ))}

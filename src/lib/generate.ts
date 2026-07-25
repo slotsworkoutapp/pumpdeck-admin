@@ -23,8 +23,7 @@ export interface GenSlot {
   label: string; // resolved variation / muscle name
   kind: 'variation' | 'muscle';
   sets: number;
-  repLow: number;
-  repHigh: number;
+  reps: number; // a single exact target (midpoint of the goal-adjusted range)
   rest: number;
   priority: number;
 }
@@ -83,8 +82,7 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
     label: slotLabel(a.src, catalog),
     kind: a.src.slot_kind,
     sets: a.sets,
-    repLow: a.repLow,
-    repHigh: a.repHigh,
+    reps: Math.round((a.repLow + a.repHigh) / 2),
     rest: a.rest,
     priority: a.src.priority,
   }));
