@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSplits, useRecipes, useGoals, useCatalog } from '../../lib/content';
 import { generateProgram, weekdayLabel, type GenDay } from '../../lib/generate';
 import { SelectField } from '../../components/ui';
+import { Thumb } from '../exercises/ExerciseTree';
+import { GROUP_ORDER } from '../../lib/bodymap';
+
+const HAS_MAP = new Set<string>(GROUP_ORDER);
 
 export default function Preview() {
   const { splits, loading: ls } = useSplits();
@@ -103,6 +107,12 @@ function DayCard({ day }: { day: GenDay }) {
         <ul className="divide-y divide-slate-50">
           {day.slots.map((s, i) => (
             <li key={i} className="flex items-center gap-2 px-4 py-2 text-sm">
+              <Thumb />
+              {s.group && HAS_MAP.has(s.group) ? (
+                <img src={`/maps/${s.group}.svg`} alt="" className="size-8 shrink-0 object-contain" />
+              ) : (
+                <span className="size-8 shrink-0" />
+              )}
               <span className="flex-1 font-semibold text-slate-800">{s.label}</span>
               {s.kind === 'muscle' && <span className="text-[10px] font-bold uppercase text-indigo-500">muscle</span>}
               <span className="tabular-nums text-slate-500">{s.sets} × {s.reps}</span>

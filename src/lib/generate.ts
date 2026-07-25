@@ -36,6 +36,7 @@ function snapReps(low: number, high: number): number {
 export interface GenSlot {
   label: string; // resolved variation / muscle name
   kind: 'variation' | 'muscle';
+  group: string | null; // muscle group (for the mini map)
   sets: number;
   reps: number; // a single exact target (midpoint of the goal-adjusted range)
   rest: number;
@@ -56,6 +57,11 @@ const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function slotLabel(s: ContentSlot, catalog: Catalog): string {
   if (s.slot_kind === 'muscle') return catalog.musclesById.get(s.muscle_id ?? '')?.name ?? 'Muscle';
   return catalog.familiesByKey.get(s.family_key ?? '')?.display_name ?? s.family_key ?? '?';
+}
+
+function slotGroup(s: ContentSlot, catalog: Catalog): string | null {
+  if (s.slot_kind === 'muscle') return catalog.musclesById.get(s.muscle_id ?? '')?.group_raw ?? null;
+  return catalog.familiesByKey.get(s.family_key ?? '')?.muscle_group_raw ?? null;
 }
 
 // Apply goal shifts + fill the time budget; return surviving slots in day order.
@@ -108,6 +114,7 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
   const slots: GenSlot[] = kept.map((a) => ({
     label: slotLabel(a.src, catalog),
     kind: a.src.slot_kind,
+    group: slotGroup(a.src, catalog),
     sets: chosenSets.get(a.src)!,
     reps: snapReps(a.repLow, a.repHigh),
     rest: a.rest,
