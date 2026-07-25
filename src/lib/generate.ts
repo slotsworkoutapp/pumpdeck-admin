@@ -56,6 +56,18 @@ export interface GenDay {
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// Workout FLOW order for display: big compound muscles first, then shoulders,
+// then arms, then core — so a Push day reads chest → shoulders → triceps, never
+// ping-ponging chest/triceps/chest. Within a muscle, the recipe's order (which
+// already lists compounds before isolations) breaks ties.
+const GROUP_RANK: Record<string, number> = {
+  chest: 0, back: 0, legs: 0,
+  shoulders: 1,
+  biceps: 2, triceps: 2, forearms: 2,
+  core: 3,
+};
+const groupRank = (g: string | null): number => (g != null && g in GROUP_RANK ? GROUP_RANK[g] : 1.5);
+
 function slotLabel(s: ContentSlot, catalog: Catalog): string {
   if (s.slot_kind === 'muscle') return catalog.musclesById.get(s.muscle_id ?? '')?.name ?? 'Muscle';
   return catalog.familiesByKey.get(s.family_key ?? '')?.display_name ?? s.family_key ?? '?';
@@ -166,7 +178,11 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
       break; // budget essentially full
     }
   }
-  const kept = adjusted.filter((a) => chosenSets.has(a.src)).sort((x, y) => x.src.sort_order - y.src.sort_order);
+  // Display in workout-flow order: big muscles → shoulders → arms → core.
+  const kept = adjusted.filter((a) => chosenSets.has(a.src)).sort((x, y) => {
+    const rx = groupRank(slotGroup(x.src, catalog)), ry = groupRank(slotGroup(y.src, catalog));
+    return rx !== ry ? rx - ry : x.src.sort_order - y.src.sort_order;
+  });
   const slots: GenSlot[] = kept.map((a) => ({
     label: slotLabel(a.src, catalog),
     kind: a.src.slot_kind,
