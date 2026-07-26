@@ -82,9 +82,10 @@ const goals = go.data.map((g) => ({
   rep_shift: g.rep_shift, rest_multiplier: g.rest_multiplier, set_shift: g.set_shift, sort_order: g.sort_order,
 }));
 
-// Locked programs: reviewed scenarios the app ships verbatim. Keep only what the
-// app materializes from (family/muscle + sets/reps/rest) — drop display extras.
-const lockedPrograms = (lk.data ?? []).map((p) => ({
+// Locked programs: ONLY reviewed scenarios ship to the app (edited-but-unreviewed
+// working copies stay in the dashboard). Keep only what the app materializes from
+// (family/muscle + sets/reps/rest) — drop display extras.
+const lockedPrograms = (lk.data ?? []).filter((p) => p.reviewed).map((p) => ({
   split_key: p.split_key, minutes: p.minutes, goal_key: p.goal_key,
   days: (p.days ?? []).map((d) => ({
     weekday: d.weekday,

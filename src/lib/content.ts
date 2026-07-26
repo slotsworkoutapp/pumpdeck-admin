@@ -233,27 +233,39 @@ export interface LockedProgram {
   minutes: number;
   goal_key: string;
   days: LockedDay[];
+  reviewed: boolean;
 }
 export const lockId = (splitKey: string, minutes: number, goalKey: string) => `${splitKey}|${minutes}|${goalKey}`;
 
-// All locks, keyed split|minutes|goal → frozen days. reload() re-fetches.
+// Saved custom programs: `locks` = the days (a working copy exists), `reviewed` =
+// whether it's been checked off. A row can exist (edited) but not be reviewed.
 export function useLockedPrograms() {
   const [locks, setLocks] = useState<Record<string, LockedDay[]> | null>(null);
+  const [reviewed, setReviewed] = useState<Record<string, boolean>>({});
   const [tick, setTick] = useState(0);
   useEffect(() => {
     (async () => {
       const { data } = await supabase.from('content_locked_programs').select('*');
       const m: Record<string, LockedDay[]> = {};
-      for (const r of (data ?? []) as LockedProgram[]) m[lockId(r.split_key, r.minutes, r.goal_key)] = r.days;
+      const r: Record<string, boolean> = {};
+      for (const row of (data ?? []) as LockedProgram[]) {
+        const id = lockId(row.split_key, row.minutes, row.goal_key);
+        m[id] = row.days;
+        r[id] = row.reviewed;
+      }
       setLocks(m);
+      setReviewed(r);
     })();
   }, [tick]);
-  return { locks, reload: () => setTick((t) => t + 1) };
+  return { locks, reviewed, reload: () => setTick((t) => t + 1) };
 }
 
-export async function lockProgram(splitKey: string, minutes: number, goalKey: string, days: LockedDay[]) {
-  return supabase.from('content_locked_programs').upsert({ split_key: splitKey, minutes, goal_key: goalKey, days });
+// Save a working copy (days) with an explicit reviewed flag. Editing preserves
+// the current flag; the review checkmark toggles it.
+export async function saveProgram(splitKey: string, minutes: number, goalKey: string, days: LockedDay[], reviewed: boolean) {
+  return supabase.from('content_locked_programs').upsert({ split_key: splitKey, minutes, goal_key: goalKey, days, reviewed });
 }
+// Drop the custom program entirely — back to live generation.
 export async function unlockProgram(splitKey: string, minutes: number, goalKey: string) {
   return supabase.from('content_locked_programs').delete().eq('split_key', splitKey).eq('minutes', minutes).eq('goal_key', goalKey);
 }

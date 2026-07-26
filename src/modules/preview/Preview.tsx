@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   useSplits, useRecipes, useGoals, useCatalog, useLockedPrograms,
-  lockProgram, unlockProgram, lockId,
+  saveProgram, unlockProgram, lockId,
   type Catalog, type ContentGoal, type ContentSplit, type LockedDay,
 } from '../../lib/content';
 import { generateProgram, weekdayLabel, type GenDay } from '../../lib/generate';
@@ -49,7 +49,7 @@ export default function Preview() {
   const { recipes, loading: lr } = useRecipes();
   const { goals, loading: lg } = useGoals();
   const { catalog, loading: lc } = useCatalog();
-  const { locks, reload: reloadLocks } = useLockedPrograms();
+  const { locks, reviewed: reviewedMap, reload: reloadLocks } = useLockedPrograms();
 
   const [active, setActive] = useState<{ splitKey: string; minutes: number; goalKey: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -79,7 +79,7 @@ export default function Preview() {
 
   const orderedSplits = useMemo(() => [...(splits ?? [])].sort((a, b) => a.sort_order - b.sort_order), [splits]);
   const total = orderedSplits.length * TIMES.length * (goals?.length ?? 0);
-  const doneCount = Object.keys(lockedMap).length;
+  const doneCount = Object.values(reviewedMap).filter(Boolean).length;
 
   // family key → its primary muscle id (first exercise), for placing a variation.
   const familyMuscle = useMemo(() => {
@@ -97,22 +97,26 @@ export default function Preview() {
     return generateProgram(s, recipes, g, minutes, catalog);
   }
 
-  async function toggleLock(splitKey: string, minutes: number, goalKey: string) {
+  // Toggle the review checkmark. Marking reviewed freezes the current program if
+  // there's no working copy yet; unmarking keeps the saved copy (just unreviewed).
+  async function toggleReviewed(splitKey: string, minutes: number, goalKey: string) {
     if (busy) return;
-    setBusy(true);
     const id = lockId(splitKey, minutes, goalKey);
-    const res = lockedMap[id]
-      ? await unlockProgram(splitKey, minutes, goalKey)
-      : await lockProgram(splitKey, minutes, goalKey, toLockShape(genFor(splitKey, minutes, goalKey)));
+    const nowReviewed = !reviewedMap[id];
+    const days = lockedMap[id] ?? toLockShape(genFor(splitKey, minutes, goalKey));
+    setBusy(true);
+    const res = await saveProgram(splitKey, minutes, goalKey, days, nowReviewed);
     setBusy(false);
-    if (res.error) { alert(`Couldn't save lock: ${res.error.message}`); return; }
+    if (res.error) { alert(`Couldn't save: ${res.error.message}`); return; }
     reloadLocks();
   }
-  async function relock(splitKey: string, minutes: number, goalKey: string) {
+  // Discard the custom program — revert this scenario to live generation.
+  async function resetToGenerated(splitKey: string, minutes: number, goalKey: string) {
+    if (!confirm('Discard your edits and revert this scenario to the generated version?')) return;
     setBusy(true);
-    const res = await lockProgram(splitKey, minutes, goalKey, toLockShape(genFor(splitKey, minutes, goalKey)));
+    const res = await unlockProgram(splitKey, minutes, goalKey);
     setBusy(false);
-    if (res.error) { alert(`Couldn't update lock: ${res.error.message}`); return; }
+    if (res.error) { alert(`Couldn't reset: ${res.error.message}`); return; }
     reloadLocks();
   }
 
@@ -123,10 +127,10 @@ export default function Preview() {
   const split = active ? orderedSplits.find((s) => s.key === active.splitKey) : undefined;
   const goal = active ? goals.find((g) => g.goal_key === active.goalKey) : undefined;
   const activeId = active ? lockId(active.splitKey, active.minutes, active.goalKey) : '';
-  const isLocked = !!lockedMap[activeId];
+  const hasCustom = !!lockedMap[activeId];   // a saved working copy exists (edited or reviewed)
+  const isReviewed = !!reviewedMap[activeId];
   const liveProgram = split && goal && active ? generateProgram(split, recipes, goal, active.minutes, catalog) : [];
-  const program = isLocked ? (lockedMap[activeId] as unknown as GenDay[]) : liveProgram;
-  const drift = isLocked && JSON.stringify(lockedMap[activeId]) !== JSON.stringify(toLockShape(liveProgram));
+  const program = hasCustom ? (lockedMap[activeId] as unknown as GenDay[]) : liveProgram;
 
   // --- Per-scenario editing: everything below writes THIS scenario's locked
   // program (auto-locking/freezing the current program first), so no other split
@@ -137,7 +141,8 @@ export default function Preview() {
   async function saveLockedDays(newDays: LockedDay[]) {
     if (!active) return;
     setBusy(true);
-    const res = await lockProgram(active.splitKey, active.minutes, active.goalKey, newDays);
+    // Editing preserves the current review state — it does NOT mark it reviewed.
+    const res = await saveProgram(active.splitKey, active.minutes, active.goalKey, newDays, isReviewed);
     setBusy(false);
     if (res.error) { alert(`Couldn't save: ${res.error.message}`); return; }
     reloadLocks();
@@ -223,7 +228,7 @@ export default function Preview() {
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-slate-900">Scenarios</h2>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold tabular-nums text-slate-500">{doneCount} / {total} locked</span>
+                <span className="text-xs font-semibold tabular-nums text-slate-500">{doneCount} / {total} reviewed</span>
                 <button onClick={() => setScenariosOpen(false)} className="text-slate-400 hover:text-slate-700" title="Collapse">«</button>
               </div>
             </div>
@@ -237,10 +242,11 @@ export default function Preview() {
                 key={s.key}
                 split={s}
                 goals={goals}
-                locked={lockedMap}
+                reviewed={reviewedMap}
+                custom={lockedMap}
                 activeId={activeId}
                 onSelect={(minutes, goalKey) => setActive({ splitKey: s.key, minutes, goalKey })}
-                onToggle={(minutes, goalKey) => toggleLock(s.key, minutes, goalKey)}
+                onToggle={(minutes, goalKey) => toggleReviewed(s.key, minutes, goalKey)}
               />
             ))}
           </div>
@@ -265,9 +271,14 @@ export default function Preview() {
               <div>
                 <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
                   {split.display_name}
-                  {isLocked && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">🔒 Locked</span>}
+                  {isReviewed && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">✓ Reviewed</span>}
+                  {hasCustom && !isReviewed && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">Edited · not reviewed</span>}
                 </h1>
-                <p className="text-sm text-slate-500">{goal.display_name} · {active.minutes} min — exactly what a new user gets.</p>
+                <p className="text-sm text-slate-500">
+                  {goal.display_name} · {active.minutes} min
+                  {hasCustom ? ' · your saved version' : ' · generated'}
+                  {hasCustom && <> · <button onClick={() => resetToGenerated(active.splitKey, active.minutes, active.goalKey)} className="text-rose-500 hover:underline">reset to generated</button></>}
+                </p>
               </div>
               <div className="ml-auto flex items-center gap-2">
                 <div className="flex overflow-hidden rounded-lg border border-slate-300">
@@ -290,21 +301,11 @@ export default function Preview() {
                 </div>
                 <button
                   disabled={busy}
-                  onClick={() => toggleLock(active.splitKey, active.minutes, active.goalKey)}
-                  className={`rounded-lg px-4 py-1.5 text-sm font-bold disabled:opacity-50 ${isLocked ? 'bg-emerald-500 text-white' : 'border border-emerald-500 text-emerald-600 hover:bg-emerald-50'}`}
-                >{isLocked ? '✓ Reviewed' : 'Mark reviewed'}</button>
+                  onClick={() => toggleReviewed(active.splitKey, active.minutes, active.goalKey)}
+                  className={`rounded-lg px-4 py-1.5 text-sm font-bold disabled:opacity-50 ${isReviewed ? 'bg-emerald-500 text-white' : 'border border-emerald-500 text-emerald-600 hover:bg-emerald-50'}`}
+                >{isReviewed ? '✓ Reviewed' : 'Mark reviewed'}</button>
               </div>
             </div>
-
-            {drift && (
-              <div className="mb-4 flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-                <span>A recipe changed since you locked this — the frozen version below is what's kept (and what the app ships).</span>
-                <button
-                  onClick={() => relock(active.splitKey, active.minutes, active.goalKey)}
-                  className="ml-3 rounded-md bg-amber-600 px-3 py-1 text-xs font-bold text-white hover:bg-amber-700"
-                >Update to current</button>
-              </div>
-            )}
 
             <CoverageStrip
               program={program}
@@ -358,17 +359,18 @@ export default function Preview() {
 }
 
 function SplitGroup({
-  split, goals, locked, activeId, onSelect, onToggle,
+  split, goals, reviewed, custom, activeId, onSelect, onToggle,
 }: {
   split: ContentSplit;
   goals: ContentGoal[];
-  locked: Record<string, LockedDay[]>;
+  reviewed: Record<string, boolean>;
+  custom: Record<string, LockedDay[]>;
   activeId: string;
   onSelect: (minutes: number, goalKey: string) => void;
   onToggle: (minutes: number, goalKey: string) => void;
 }) {
   const cells = TIMES.flatMap((m) => goals.map((g) => ({ minutes: m, goal: g, id: lockId(split.key, m, g.goal_key) })));
-  const done = cells.filter((c) => locked[c.id]).length;
+  const done = cells.filter((c) => reviewed[c.id]).length;
   return (
     <div className="px-3 py-2.5">
       <div className="mb-1.5 flex items-baseline justify-between px-1">
@@ -378,7 +380,8 @@ function SplitGroup({
       <div className="space-y-1">
         {cells.map((c) => {
           const isActive = c.id === activeId;
-          const isDone = !!locked[c.id];
+          const isReviewed = !!reviewed[c.id];
+          const isEdited = !!custom[c.id] && !isReviewed;
           return (
             <div
               key={c.id}
@@ -387,11 +390,11 @@ function SplitGroup({
             >
               <button
                 onClick={(e) => { e.stopPropagation(); onToggle(c.minutes, c.goal.goal_key); }}
-                className={`grid size-4 shrink-0 place-items-center rounded border ${isDone ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 bg-white'}`}
-                title={isDone ? 'Locked — click to unlock' : 'Mark reviewed & lock'}
-              >{isDone && <span className="text-[9px] leading-none">✓</span>}</button>
-              <span className={`flex-1 ${isDone ? 'text-slate-400' : 'text-slate-700'}`}>{c.minutes}m · {c.goal.display_name}</span>
-              {isDone && <span className="text-[9px]">🔒</span>}
+                className={`grid size-4 shrink-0 place-items-center rounded border ${isReviewed ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 bg-white'}`}
+                title={isReviewed ? 'Reviewed — click to unmark' : 'Mark reviewed'}
+              >{isReviewed && <span className="text-[9px] leading-none">✓</span>}</button>
+              <span className={`flex-1 ${isReviewed ? 'text-slate-400' : 'text-slate-700'}`}>{c.minutes}m · {c.goal.display_name}</span>
+              {isEdited && <span className="size-1.5 rounded-full bg-amber-400" title="Edited, not reviewed" />}
             </div>
           );
         })}
