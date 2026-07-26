@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import {
@@ -13,6 +13,12 @@ import { COVERAGE_GROUPS, GROUP_LABEL, perGroupSets, groupTarget, coverageStatus
 const HAS_MAP = new Set<string>(GROUP_ORDER);
 // The three session lengths the app actually offers — the whole scenario grid.
 const TIMES = [30, 45, 60];
+
+// What's being dragged: a queued variation from the tray, or an existing slot.
+type PendingItem = { key: string; name: string; sets: number; weekday: number };
+type DragItem =
+  | { kind: 'tray'; key: string; name: string; sets: number }
+  | { kind: 'slot'; weekday: number; index: number };
 
 // Freeze the generated program into the app-facing shape: keep what the app needs
 // to materialize (family/muscle + sets/reps/rest) PLUS display fields so the
@@ -50,6 +56,8 @@ export default function Preview() {
   const [editing, setEditing] = useState<GenSlot | null>(null);
   const [savingSlot, setSavingSlot] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<PendingItem[]>([]);
+  const [dragItem, setDragItem] = useState<DragItem | null>(null);
 
   const lockedMap = locks ?? {};
 
@@ -59,6 +67,9 @@ export default function Preview() {
       setActive({ splitKey: splits[0].key, minutes: 60, goalKey: goals[0].goal_key });
     }
   }, [active, splits, goals]);
+
+  // Clear the waiting list + any drag when the scenario changes.
+  useEffect(() => { setPending([]); setDragItem(null); }, [active?.splitKey, active?.minutes, active?.goalKey]);
 
   const recipeIdByType = useMemo(() => {
     const m = new Map<string, string>();
@@ -135,26 +146,74 @@ export default function Preview() {
     setEditing(s);
   }
 
-  // Add a variation to a specific day of THIS scenario. Writes to the scenario's
-  // locked program (auto-locks/freezes the current program first), so no other
-  // split is affected. Reps/rest default to goal-appropriate values.
-  async function placeVariation(familyKey: string, sets: number, weekday: number) {
-    if (!active || !goal) return;
+  // --- Per-scenario editing: everything below writes THIS scenario's locked
+  // program (auto-locking/freezing the current program first), so no other split
+  // is affected. A deep-copied editable base + a single save path.
+  function lockedBase(): LockedDay[] {
+    return (lockedMap[activeId] ?? toLockShape(liveProgram)).map((d) => ({ ...d, slots: [...d.slots] }));
+  }
+  async function saveLockedDays(newDays: LockedDay[]) {
+    if (!active) return;
+    setBusy(true);
+    const res = await lockProgram(active.splitKey, active.minutes, active.goalKey, newDays);
+    setBusy(false);
+    if (res.error) { alert(`Couldn't save: ${res.error.message}`); return; }
+    reloadLocks();
+  }
+  function buildSlot(familyKey: string, sets: number): LockedDay['slots'][number] {
     const fam = catalog!.familiesByKey.get(familyKey);
-    const reps = Math.max(3, 10 + goal.rep_shift);
-    const rest = Math.min(180, Math.round((90 * goal.rest_multiplier) / 15) * 15);
-    const slot = {
+    const reps = Math.max(3, 10 + (goal?.rep_shift ?? 0));
+    const rest = Math.min(180, Math.round((90 * (goal?.rest_multiplier ?? 1)) / 15) * 15);
+    return {
       familyKey, muscleId: null, sets, reps, rest,
       muscle: familyMuscle[familyKey], label: fam?.display_name ?? familyKey,
       group: fam?.muscle_group_raw ?? null, kind: 'variation', slotId: null,
     };
-    const base = lockedMap[activeId] ?? toLockShape(liveProgram);
-    const newDays = base.map((d) => (d.weekday === weekday ? { ...d, slots: [...d.slots, slot] } : d));
-    setBusy(true);
-    const res = await lockProgram(active.splitKey, active.minutes, active.goalKey, newDays as LockedDay[]);
-    setBusy(false);
-    if (res.error) { alert(`Couldn't add: ${res.error.message}`); return; }
-    reloadLocks();
+  }
+  // Insert a variation into a day at `index` (default: append).
+  async function placeVariation(familyKey: string, sets: number, weekday: number, index?: number) {
+    if (!active || !goal) return;
+    const base = lockedBase();
+    const day = base.find((d) => d.weekday === weekday);
+    if (!day) return;
+    day.slots.splice(index ?? day.slots.length, 0, buildSlot(familyKey, sets));
+    await saveLockedDays(base);
+  }
+  // Move an existing slot to another position/day.
+  async function moveSlot(fromW: number, fromI: number, toW: number, toI: number) {
+    const base = lockedBase();
+    const src = base.find((d) => d.weekday === fromW);
+    const tgt = base.find((d) => d.weekday === toW);
+    if (!src || !tgt) return;
+    const [moved] = src.slots.splice(fromI, 1);
+    if (!moved) return;
+    let idx = toI;
+    if (fromW === toW && toI > fromI) idx -= 1; // account for the removal shift
+    tgt.slots.splice(idx, 0, moved);
+    await saveLockedDays(base);
+  }
+  // Drop resolves to a place (from tray) or a move (existing slot).
+  async function handleDrop(weekday: number, index: number) {
+    const item = dragItem;
+    setDragItem(null);
+    if (!item) return;
+    if (item.kind === 'tray') {
+      await placeVariation(item.key, item.sets, weekday, index);
+      setPending((p) => p.filter((x) => x.key !== item.key));
+    } else if (!(item.weekday === weekday && (index === item.index || index === item.index + 1))) {
+      await moveSlot(item.weekday, item.index, weekday, index);
+    }
+  }
+
+  // Waiting-list handlers.
+  const stagePending = (key: string, name: string) =>
+    setPending((p) => (p.some((x) => x.key === key) ? p : [...p, { key, name, sets: 3, weekday: liveProgram[0]?.weekday ?? 2 }]));
+  const patchPending = (key: string, patch: Partial<PendingItem>) =>
+    setPending((p) => p.map((x) => (x.key === key ? { ...x, ...patch } : x)));
+  const removePending = (key: string) => setPending((p) => p.filter((x) => x.key !== key));
+  async function addPending(item: PendingItem) {
+    await placeVariation(item.key, item.sets, item.weekday);
+    removePending(item.key);
   }
 
   return (
@@ -236,11 +295,31 @@ export default function Preview() {
               </div>
             )}
 
-            <CoverageStrip key={activeId} program={program} catalog={catalog} busy={busy} onPlace={placeVariation} />
+            <CoverageStrip
+              program={program}
+              catalog={catalog}
+              busy={busy}
+              pending={pending}
+              onStage={stagePending}
+              onPatchPending={patchPending}
+              onRemovePending={removePending}
+              onAddPending={addPending}
+              onDragStartTray={(item) => setDragItem({ kind: 'tray', key: item.key, name: item.name, sets: item.sets })}
+              onDragEnd={() => setDragItem(null)}
+            />
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {program.map((d, i) => (
-                <DayCard key={i} day={d} recipeId={d.dayType ? recipeIdByType.get(d.dayType) : undefined} onEditSlot={handleEditSlot} />
+                <DayCard
+                  key={i}
+                  day={d}
+                  recipeId={d.dayType ? recipeIdByType.get(d.dayType) : undefined}
+                  onEditSlot={handleEditSlot}
+                  dragging={!!dragItem}
+                  onSlotDragStart={(weekday, index) => setDragItem({ kind: 'slot', weekday, index })}
+                  onDragEnd={() => setDragItem(null)}
+                  onDropAt={handleDrop}
+                />
               ))}
             </div>
           </>
@@ -300,16 +379,21 @@ function SplitGroup({
 // Per-scenario coverage + authoring: weekly sets per group (fair-share target),
 // every muscle and every variation beneath it (zeros included), and a waiting
 // list to add a missing variation to a day of this scenario.
-function CoverageStrip({ program, catalog, busy, onPlace }: {
+function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPending, onRemovePending, onAddPending, onDragStartTray, onDragEnd }: {
   program: GenDay[];
   catalog: Catalog;
   busy: boolean;
-  onPlace: (familyKey: string, sets: number, weekday: number) => Promise<void>;
+  pending: PendingItem[];
+  onStage: (key: string, name: string) => void;
+  onPatchPending: (key: string, patch: Partial<PendingItem>) => void;
+  onRemovePending: (key: string) => void;
+  onAddPending: (item: PendingItem) => Promise<void>;
+  onDragStartTray: (item: { key: string; name: string; sets: number }) => void;
+  onDragEnd: () => void;
 }) {
   const perGroup = perGroupSets(program);
   const totalSets = COVERAGE_GROUPS.reduce((t, g) => t + (perGroup[g] ?? 0), 0);
   const dayOptions = program.map((d) => ({ weekday: d.weekday, name: d.dayName }));
-  const [pending, setPending] = useState<{ key: string; name: string; sets: number; weekday: number }[]>([]);
 
   const familyMuscle = useMemo(() => {
     const m: Record<string, string> = {};
@@ -345,16 +429,6 @@ function CoverageStrip({ program, catalog, busy, onPlace }: {
   }, [catalog, familyMuscle]);
 
   const stagedKeys = new Set(pending.map((p) => p.key));
-  const stage = (key: string, name: string) =>
-    setPending((p) => (p.some((x) => x.key === key) ? p : [...p, { key, name, sets: 3, weekday: dayOptions[0]?.weekday ?? 2 }]));
-  const patch = (key: string, p: Partial<{ sets: number; weekday: number }>) =>
-    setPending((list) => list.map((x) => (x.key === key ? { ...x, ...p } : x)));
-  async function place(key: string) {
-    const item = pending.find((p) => p.key === key);
-    if (!item) return;
-    await onPlace(item.key, item.sets, item.weekday);
-    setPending((p) => p.filter((x) => x.key !== key));
-  }
 
   return (
     <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -396,7 +470,7 @@ function CoverageStrip({ program, catalog, busy, onPlace }: {
                             <button
                               key={f.key}
                               disabled={staged}
-                              onClick={() => stage(f.key, f.name)}
+                              onClick={() => onStage(f.key, f.name)}
                               className={`rounded border border-dashed px-1.5 py-0.5 ${staged ? 'border-indigo-300 bg-indigo-50 text-indigo-500' : 'border-slate-300 text-slate-400 hover:border-indigo-400 hover:text-indigo-600'}`}
                             >{staged ? '✓ ' : '+ '}{f.name}</button>
                           );
@@ -413,21 +487,28 @@ function CoverageStrip({ program, catalog, busy, onPlace }: {
 
       {pending.length > 0 && (
         <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 p-2">
-          <div className="mb-1.5 text-xs font-bold text-indigo-700">To place ({pending.length}) — set the count, pick a day, then Add. This locks the scenario.</div>
+          <div className="mb-1.5 text-xs font-bold text-indigo-700">To place ({pending.length}) — drag onto a day, or set the count + day and Add. This locks the scenario.</div>
           <div className="grid gap-1.5">
             {pending.map((p) => (
-              <div key={p.key} className="flex items-center gap-2 text-xs">
+              <div
+                key={p.key}
+                draggable
+                onDragStart={() => onDragStartTray({ key: p.key, name: p.name, sets: p.sets })}
+                onDragEnd={onDragEnd}
+                className="flex cursor-move items-center gap-2 rounded border border-indigo-200 bg-white px-2 py-1 text-xs"
+              >
+                <span className="text-slate-300">⠿</span>
                 <span className="flex-1 font-semibold text-slate-800">{p.name}</span>
                 <div className="flex items-center overflow-hidden rounded border border-slate-300 bg-white">
-                  <button onClick={() => patch(p.key, { sets: Math.max(1, p.sets - 1) })} className="px-1.5 text-slate-500 hover:bg-slate-100">−</button>
+                  <button onClick={() => onPatchPending(p.key, { sets: Math.max(1, p.sets - 1) })} className="px-1.5 text-slate-500 hover:bg-slate-100">−</button>
                   <span className="w-12 text-center tabular-nums">{p.sets} set{p.sets > 1 ? 's' : ''}</span>
-                  <button onClick={() => patch(p.key, { sets: p.sets + 1 })} className="px-1.5 text-slate-500 hover:bg-slate-100">+</button>
+                  <button onClick={() => onPatchPending(p.key, { sets: p.sets + 1 })} className="px-1.5 text-slate-500 hover:bg-slate-100">+</button>
                 </div>
-                <select value={p.weekday} onChange={(e) => patch(p.key, { weekday: parseInt(e.target.value, 10) })} className="rounded border border-slate-300 bg-white px-1.5 py-1">
+                <select value={p.weekday} onChange={(e) => onPatchPending(p.key, { weekday: parseInt(e.target.value, 10) })} className="rounded border border-slate-300 bg-white px-1.5 py-1">
                   {dayOptions.map((d) => <option key={d.weekday} value={d.weekday}>{d.name}</option>)}
                 </select>
-                <button disabled={busy} onClick={() => place(p.key)} className="rounded bg-indigo-600 px-2.5 py-1 font-bold text-white hover:bg-indigo-700 disabled:opacity-50">Add</button>
-                <button onClick={() => setPending((x) => x.filter((y) => y.key !== p.key))} className="px-1 text-slate-400 hover:text-slate-700">✕</button>
+                <button disabled={busy} onClick={() => onAddPending(p)} className="rounded bg-indigo-600 px-2.5 py-1 font-bold text-white hover:bg-indigo-700 disabled:opacity-50">Add</button>
+                <button onClick={() => onRemovePending(p.key)} className="px-1 text-slate-400 hover:text-slate-700">✕</button>
               </div>
             ))}
           </div>
@@ -525,10 +606,31 @@ function SlotPicker({
   );
 }
 
-function DayCard({ day, recipeId, onEditSlot }: { day: GenDay; recipeId?: string; onEditSlot: (s: GenSlot) => void }) {
+// A slim drop target between/around slots that expands when dragged over.
+function DropZone({ onDrop }: { onDrop: () => void }) {
+  const [over, setOver] = useState(false);
+  return (
+    <li
+      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={() => { setOver(false); onDrop(); }}
+      className={`mx-3 rounded transition-all ${over ? 'my-1 h-6 border-2 border-dashed border-indigo-400 bg-indigo-50' : 'h-1'}`}
+    />
+  );
+}
+
+function DayCard({ day, recipeId, onEditSlot, dragging, onSlotDragStart, onDragEnd, onDropAt }: {
+  day: GenDay;
+  recipeId?: string;
+  onEditSlot: (s: GenSlot) => void;
+  dragging: boolean;
+  onSlotDragStart: (weekday: number, index: number) => void;
+  onDragEnd: () => void;
+  onDropAt: (weekday: number, index: number) => void;
+}) {
   const totalSets = day.slots.reduce((n, s) => n + s.sets, 0);
   return (
-    <div className="rounded-xl border border-slate-200 bg-white">
+    <div className={`rounded-xl border bg-white ${dragging ? 'border-indigo-200' : 'border-slate-200'}`}>
       <div className="flex items-baseline justify-between border-b border-slate-100 px-4 py-2">
         <span className="font-bold text-slate-900">
           <span className="text-slate-400">{weekdayLabel(day.weekday)}</span> {day.dayName}
@@ -539,27 +641,38 @@ function DayCard({ day, recipeId, onEditSlot }: { day: GenDay; recipeId?: string
         </div>
       </div>
       {day.note ? (
-        <div className="px-4 py-3 text-sm text-amber-600">{day.note}</div>
+        <div
+          onDragOver={dragging ? (e) => e.preventDefault() : undefined}
+          onDrop={dragging ? () => onDropAt(day.weekday, 0) : undefined}
+          className={`px-4 py-3 text-sm text-amber-600 ${dragging ? 'ring-2 ring-inset ring-indigo-200' : ''}`}
+        >{day.note}{dragging ? ' — drop here to add' : ''}</div>
       ) : (
-        <ul className="divide-y divide-slate-50">
+        <ul>
           {day.slots.map((s, i) => (
-            <li
-              key={i}
-              onClick={() => s.slotId && onEditSlot(s)}
-              className={`flex items-center gap-2 px-4 py-2 text-sm ${s.slotId ? 'cursor-pointer hover:bg-indigo-50' : ''}`}
-              title={s.slotId ? 'Click to swap this exercise' : undefined}
-            >
-              {s.group && HAS_MAP.has(s.group) ? (
-                <img src={`/maps/${s.group}.svg`} alt="" className="size-8 shrink-0 object-contain" />
-              ) : (
-                <span className="size-8 shrink-0" />
-              )}
-              <span className="flex-1 font-semibold text-slate-800">{s.label}</span>
-              {s.kind === 'muscle' && <span className="text-[10px] font-bold uppercase text-indigo-500">muscle</span>}
-              <span className="tabular-nums text-slate-500">{s.sets} × {s.reps}</span>
-              <span className="w-12 text-right tabular-nums text-xs text-slate-400">{s.rest}s</span>
-            </li>
+            <Fragment key={i}>
+              {dragging && <DropZone onDrop={() => onDropAt(day.weekday, i)} />}
+              <li
+                draggable
+                onDragStart={() => onSlotDragStart(day.weekday, i)}
+                onDragEnd={onDragEnd}
+                onClick={() => !dragging && s.slotId && onEditSlot(s)}
+                className={`flex items-center gap-2 border-b border-slate-50 px-4 py-2 text-sm ${dragging ? 'cursor-move' : s.slotId ? 'cursor-pointer hover:bg-indigo-50' : 'cursor-move'}`}
+                title="Drag to move · click to swap"
+              >
+                <span className="cursor-move text-xs text-slate-300">⠿</span>
+                {s.group && HAS_MAP.has(s.group) ? (
+                  <img src={`/maps/${s.group}.svg`} alt="" className="size-8 shrink-0 object-contain" />
+                ) : (
+                  <span className="size-8 shrink-0" />
+                )}
+                <span className="flex-1 font-semibold text-slate-800">{s.label}</span>
+                {s.kind === 'muscle' && <span className="text-[10px] font-bold uppercase text-indigo-500">muscle</span>}
+                <span className="tabular-nums text-slate-500">{s.sets} × {s.reps}</span>
+                <span className="w-12 text-right tabular-nums text-xs text-slate-400">{s.rest}s</span>
+              </li>
+            </Fragment>
           ))}
+          {dragging && <DropZone onDrop={() => onDropAt(day.weekday, day.slots.length)} />}
         </ul>
       )}
     </div>
