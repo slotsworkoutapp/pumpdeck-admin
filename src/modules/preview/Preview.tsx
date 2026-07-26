@@ -1,12 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
 import {
   useSplits, useRecipes, useGoals, useCatalog, useLockedPrograms,
   lockProgram, unlockProgram, lockId,
   type Catalog, type ContentGoal, type ContentSplit, type LockedDay,
 } from '../../lib/content';
-import { generateProgram, weekdayLabel, type GenDay, type GenSlot } from '../../lib/generate';
+import { generateProgram, weekdayLabel, type GenDay } from '../../lib/generate';
 import { GROUP_ORDER } from '../../lib/bodymap';
 import { COVERAGE_GROUPS, GROUP_LABEL, perGroupSets, groupTarget, coverageStatus, statusChip } from '../../lib/coverage';
 
@@ -47,14 +46,12 @@ function toLockShape(program: GenDay[]): LockedDay[] {
 
 export default function Preview() {
   const { splits, loading: ls } = useSplits();
-  const { recipes, loading: lr, reload: reloadRecipes } = useRecipes();
+  const { recipes, loading: lr } = useRecipes();
   const { goals, loading: lg } = useGoals();
   const { catalog, loading: lc } = useCatalog();
   const { locks, reload: reloadLocks } = useLockedPrograms();
 
   const [active, setActive] = useState<{ splitKey: string; minutes: number; goalKey: string } | null>(null);
-  const [editing, setEditing] = useState<GenSlot | null>(null);
-  const [savingSlot, setSavingSlot] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [dragItem, setDragItem] = useState<DragItem | null>(null);
@@ -128,24 +125,6 @@ export default function Preview() {
   const program = isLocked ? (lockedMap[activeId] as unknown as GenDay[]) : liveProgram;
   const drift = isLocked && JSON.stringify(lockedMap[activeId]) !== JSON.stringify(toLockShape(liveProgram));
 
-  async function applySlotEdit(patch: { slot_kind: 'variation' | 'muscle'; family_key: string | null; muscle_id: string | null }) {
-    if (!editing?.slotId) return;
-    setSavingSlot(true);
-    const { error } = await supabase.from('content_day_recipe_slots').update(patch).eq('id', editing.slotId);
-    setSavingSlot(false);
-    if (error) { alert(`Couldn't save: ${error.message}`); return; }
-    setEditing(null);
-    reloadRecipes();
-  }
-  async function handleEditSlot(s: GenSlot) {
-    if (isLocked && active) {
-      if (!confirm('This scenario is reviewed & locked. Unlock it to edit? (Editing changes the shared recipe.)')) return;
-      await unlockProgram(active.splitKey, active.minutes, active.goalKey);
-      reloadLocks();
-    }
-    setEditing(s);
-  }
-
   // --- Per-scenario editing: everything below writes THIS scenario's locked
   // program (auto-locking/freezing the current program first), so no other split
   // is affected. A deep-copied editable base + a single save path.
@@ -190,6 +169,22 @@ export default function Preview() {
     let idx = toI;
     if (fromW === toW && toI > fromI) idx -= 1; // account for the removal shift
     tgt.slots.splice(idx, 0, moved);
+    await saveLockedDays(base);
+  }
+  // Edit a slot's sets / reps / rest in place.
+  async function updateSlot(weekday: number, index: number, patch: { sets?: number; reps?: number; rest?: number }) {
+    const base = lockedBase();
+    const day = base.find((d) => d.weekday === weekday);
+    if (!day || !day.slots[index]) return;
+    day.slots[index] = { ...day.slots[index], ...patch };
+    await saveLockedDays(base);
+  }
+  // Remove a slot from a day.
+  async function removeSlot(weekday: number, index: number) {
+    const base = lockedBase();
+    const day = base.find((d) => d.weekday === weekday);
+    if (!day) return;
+    day.slots.splice(index, 1);
     await saveLockedDays(base);
   }
   // Drop resolves to a place (from tray) or a move (existing slot).
@@ -304,6 +299,7 @@ export default function Preview() {
               onPatchPending={patchPending}
               onRemovePending={removePending}
               onAddPending={addPending}
+              onUpdateSlot={updateSlot}
               onDragStartTray={(item) => setDragItem({ kind: 'tray', key: item.key, name: item.name, sets: item.sets })}
               onDragEnd={() => setDragItem(null)}
             />
@@ -314,7 +310,9 @@ export default function Preview() {
                   key={i}
                   day={d}
                   recipeId={d.dayType ? recipeIdByType.get(d.dayType) : undefined}
-                  onEditSlot={handleEditSlot}
+                  busy={busy}
+                  onUpdateSlot={updateSlot}
+                  onRemoveSlot={removeSlot}
                   dragging={!!dragItem}
                   onSlotDragStart={(weekday, index) => setDragItem({ kind: 'slot', weekday, index })}
                   onDragEnd={() => setDragItem(null)}
@@ -325,10 +323,6 @@ export default function Preview() {
           </>
         )}
       </main>
-
-      {editing && catalog && (
-        <SlotPicker slot={editing} catalog={catalog} saving={savingSlot} onClose={() => setEditing(null)} onPick={applySlotEdit} />
-      )}
     </div>
   );
 }
@@ -379,7 +373,7 @@ function SplitGroup({
 // Per-scenario coverage + authoring: weekly sets per group (fair-share target),
 // every muscle and every variation beneath it (zeros included), and a waiting
 // list to add a missing variation to a day of this scenario.
-function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPending, onRemovePending, onAddPending, onDragStartTray, onDragEnd }: {
+function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPending, onRemovePending, onAddPending, onUpdateSlot, onDragStartTray, onDragEnd }: {
   program: GenDay[];
   catalog: Catalog;
   busy: boolean;
@@ -388,12 +382,20 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
   onPatchPending: (key: string, patch: Partial<PendingItem>) => void;
   onRemovePending: (key: string) => void;
   onAddPending: (item: PendingItem) => Promise<void>;
+  onUpdateSlot: (weekday: number, index: number, patch: { sets?: number }) => void;
   onDragStartTray: (item: { key: string; name: string; sets: number }) => void;
   onDragEnd: () => void;
 }) {
   const perGroup = perGroupSets(program);
   const totalSets = COVERAGE_GROUPS.reduce((t, g) => t + (perGroup[g] ?? 0), 0);
   const dayOptions = program.map((d) => ({ weekday: d.weekday, name: d.dayName }));
+
+  // Where each family currently sits, so a single-slot family can be edited here.
+  const familyLoc = useMemo(() => {
+    const m: Record<string, { weekday: number; index: number }[]> = {};
+    for (const d of program) d.slots.forEach((s, i) => { if (s.familyKey) (m[s.familyKey] ??= []).push({ weekday: d.weekday, index: i }); });
+    return m;
+  }, [program]);
 
   const familyMuscle = useMemo(() => {
     const m: Record<string, string> = {};
@@ -462,9 +464,21 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
                       <div className="flex flex-1 flex-wrap gap-1">
                         {m.families.map((f) => {
                           const fs = perFamily[f.key] ?? 0;
-                          if (fs > 0) return (
-                            <span key={f.key} className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-slate-600">{f.name} <span className="font-semibold tabular-nums text-slate-900">{fs}</span></span>
-                          );
+                          const locs = familyLoc[f.key] ?? [];
+                          if (fs > 0) {
+                            // On one day → editable count here; on several → edit on the day card.
+                            const single = locs.length === 1 ? locs[0] : null;
+                            return (
+                              <span key={f.key} className="flex items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-slate-600">
+                                {f.name}
+                                {single ? (
+                                  <EditableNum value={fs} onCommit={(n) => onUpdateSlot(single.weekday, single.index, { sets: n })} className="w-7 rounded bg-slate-50 px-0.5 text-right font-semibold tabular-nums text-slate-900 hover:bg-slate-100 focus:bg-white focus:outline-none" />
+                                ) : (
+                                  <span className="font-semibold tabular-nums text-slate-900">{fs}</span>
+                                )}
+                              </span>
+                            );
+                          }
                           const staged = stagedKeys.has(f.key);
                           return (
                             <button
@@ -518,93 +532,23 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
   );
 }
 
-function SlotPicker({
-  slot, catalog, saving, onClose, onPick,
-}: {
-  slot: GenSlot;
-  catalog: Catalog;
-  saving: boolean;
-  onClose: () => void;
-  onPick: (patch: { slot_kind: 'variation' | 'muscle'; family_key: string | null; muscle_id: string | null }) => void;
-}) {
-  const [tab, setTab] = useState<'variation' | 'muscle'>(slot.kind === 'muscle' ? 'muscle' : 'variation');
-  const [q, setQ] = useState('');
-  const ql = q.trim().toLowerCase();
-
-  const families = useMemo(
-    () =>
-      [...catalog.families]
-        .sort((a, b) => (a.muscle_group_raw ?? '').localeCompare(b.muscle_group_raw ?? '') || a.display_name.localeCompare(b.display_name))
-        .filter((f) => !ql || f.display_name.toLowerCase().includes(ql) || (f.muscle_group_raw ?? '').toLowerCase().includes(ql)),
-    [catalog, ql]
-  );
-  const muscles = useMemo(
-    () =>
-      [...catalog.muscles]
-        .sort((a, b) => a.group_raw.localeCompare(b.group_raw) || a.name.localeCompare(b.name))
-        .filter((m) => !ql || m.name.toLowerCase().includes(ql) || m.group_raw.toLowerCase().includes(ql)),
-    [catalog, ql]
-  );
-
+// A small numeric field that commits on blur / Enter (not per keystroke).
+function EditableNum({ value, onCommit, className }: { value: number; onCommit: (n: number) => void; className?: string }) {
+  const [v, setV] = useState(String(value));
+  useEffect(() => setV(String(value)), [value]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
-      <div className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="border-b border-slate-100 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-slate-900">Swap exercise</h3>
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-700">✕</button>
-          </div>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Currently <span className="font-semibold text-slate-700">{slot.label}</span> — changes this slot in the recipe (everywhere it's used).
-          </p>
-          <div className="mt-3 flex overflow-hidden rounded-lg border border-slate-300 text-sm">
-            {(['variation', 'muscle'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`flex-1 py-1.5 font-semibold ${tab === t ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-              >{t === 'variation' ? 'Variations' : 'Whole muscle'}</button>
-            ))}
-          </div>
-          <input
-            autoFocus
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search…"
-            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-slate-500"
-          />
-        </div>
-        <div className="flex-1 overflow-y-auto p-2">
-          {saving ? (
-            <div className="p-4 text-center text-sm text-slate-400">Saving…</div>
-          ) : tab === 'variation' ? (
-            families.map((f) => (
-              <button
-                key={f.key}
-                onClick={() => onPick({ slot_kind: 'variation', family_key: f.key, muscle_id: null })}
-                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-indigo-50 ${slot.familyKey === f.key ? 'bg-indigo-50' : ''}`}
-              >
-                <span className="w-16 shrink-0 text-[10px] font-bold uppercase text-slate-400">{f.muscle_group_raw ?? '?'}</span>
-                <span className="font-semibold text-slate-800">{f.display_name}</span>
-              </button>
-            ))
-          ) : (
-            muscles.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => onPick({ slot_kind: 'muscle', family_key: null, muscle_id: m.id })}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-indigo-50"
-              >
-                <span className="w-16 shrink-0 text-[10px] font-bold uppercase text-slate-400">{m.group_raw}</span>
-                <span className="font-semibold text-slate-800">{m.name}</span>
-              </button>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
+    <input
+      type="number"
+      value={v}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={() => { const n = parseInt(v || '0', 10); if (Number.isFinite(n) && n > 0 && n !== value) onCommit(n); else setV(String(value)); }}
+      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+      onClick={(e) => e.stopPropagation()}
+      className={className}
+    />
   );
 }
+
 
 // A slim drop target between/around slots that expands when dragged over.
 function DropZone({ onDrop }: { onDrop: () => void }) {
@@ -619,16 +563,19 @@ function DropZone({ onDrop }: { onDrop: () => void }) {
   );
 }
 
-function DayCard({ day, recipeId, onEditSlot, dragging, onSlotDragStart, onDragEnd, onDropAt }: {
+function DayCard({ day, recipeId, busy, onUpdateSlot, onRemoveSlot, dragging, onSlotDragStart, onDragEnd, onDropAt }: {
   day: GenDay;
   recipeId?: string;
-  onEditSlot: (s: GenSlot) => void;
+  busy: boolean;
+  onUpdateSlot: (weekday: number, index: number, patch: { sets?: number; reps?: number; rest?: number }) => void;
+  onRemoveSlot: (weekday: number, index: number) => void;
   dragging: boolean;
   onSlotDragStart: (weekday: number, index: number) => void;
   onDragEnd: () => void;
   onDropAt: (weekday: number, index: number) => void;
 }) {
   const totalSets = day.slots.reduce((n, s) => n + s.sets, 0);
+  const numCls = 'w-9 rounded border border-transparent bg-transparent px-1 py-0.5 text-right tabular-nums text-slate-600 hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:outline-none';
   return (
     <div className={`rounded-xl border bg-white ${dragging ? 'border-indigo-200' : 'border-slate-200'}`}>
       <div className="flex items-baseline justify-between border-b border-slate-100 px-4 py-2">
@@ -637,7 +584,7 @@ function DayCard({ day, recipeId, onEditSlot, dragging, onSlotDragStart, onDragE
         </span>
         <div className="flex items-baseline gap-2">
           {day.slots.length > 0 && <span className="text-xs font-semibold text-slate-400">{day.slots.length} ex · {totalSets} sets · ~{day.estMinutes}m</span>}
-          {recipeId && <Link to={`/recipes/${recipeId}`} className="text-xs font-semibold text-indigo-500 hover:underline">edit</Link>}
+          {recipeId && <Link to={`/recipes/${recipeId}`} className="text-xs font-semibold text-indigo-500 hover:underline">recipe</Link>}
         </div>
       </div>
       {day.note ? (
@@ -651,24 +598,34 @@ function DayCard({ day, recipeId, onEditSlot, dragging, onSlotDragStart, onDragE
           {day.slots.map((s, i) => (
             <Fragment key={i}>
               {dragging && <DropZone onDrop={() => onDropAt(day.weekday, i)} />}
-              <li
-                draggable
-                onDragStart={() => onSlotDragStart(day.weekday, i)}
-                onDragEnd={onDragEnd}
-                onClick={() => !dragging && s.slotId && onEditSlot(s)}
-                className={`flex items-center gap-2 border-b border-slate-50 px-4 py-2 text-sm ${dragging ? 'cursor-move' : s.slotId ? 'cursor-pointer hover:bg-indigo-50' : 'cursor-move'}`}
-                title="Drag to move · click to swap"
-              >
-                <span className="cursor-move text-xs text-slate-300">⠿</span>
+              <li className="group flex items-center gap-1.5 border-b border-slate-50 px-3 py-2 text-sm">
+                <span
+                  draggable
+                  onDragStart={() => onSlotDragStart(day.weekday, i)}
+                  onDragEnd={onDragEnd}
+                  className="cursor-move px-0.5 text-slate-300 hover:text-slate-500"
+                  title="Drag to move"
+                >⠿</span>
                 {s.group && HAS_MAP.has(s.group) ? (
-                  <img src={`/maps/${s.group}.svg`} alt="" className="size-8 shrink-0 object-contain" />
+                  <img src={`/maps/${s.group}.svg`} alt="" className="size-7 shrink-0 object-contain" />
                 ) : (
-                  <span className="size-8 shrink-0" />
+                  <span className="size-7 shrink-0" />
                 )}
-                <span className="flex-1 font-semibold text-slate-800">{s.label}</span>
-                {s.kind === 'muscle' && <span className="text-[10px] font-bold uppercase text-indigo-500">muscle</span>}
-                <span className="tabular-nums text-slate-500">{s.sets} × {s.reps}</span>
-                <span className="w-12 text-right tabular-nums text-xs text-slate-400">{s.rest}s</span>
+                <span className="flex-1 truncate font-semibold text-slate-800">{s.label}</span>
+                {s.kind === 'muscle' && <span className="text-[10px] font-bold uppercase text-indigo-500">musc</span>}
+                <EditableNum value={s.sets} onCommit={(n) => onUpdateSlot(day.weekday, i, { sets: n })} className={numCls} />
+                <span className="text-slate-300">×</span>
+                <EditableNum value={s.reps} onCommit={(n) => onUpdateSlot(day.weekday, i, { reps: n })} className={numCls} />
+                <span className="ml-1 flex items-baseline">
+                  <EditableNum value={s.rest} onCommit={(n) => onUpdateSlot(day.weekday, i, { rest: n })} className={`${numCls} text-slate-400`} />
+                  <span className="text-xs text-slate-400">s</span>
+                </span>
+                <button
+                  disabled={busy}
+                  onClick={() => onRemoveSlot(day.weekday, i)}
+                  className="ml-0.5 px-1 text-slate-300 opacity-0 hover:text-rose-600 group-hover:opacity-100 disabled:opacity-30"
+                  title="Remove"
+                >🗑</button>
               </li>
             </Fragment>
           ))}
