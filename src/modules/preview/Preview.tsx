@@ -537,7 +537,7 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
               <div
                 key={p.key}
                 draggable
-                onDragStart={() => onDragStartTray({ key: p.key, name: p.name, sets: p.sets })}
+                onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'tray'); onDragStartTray({ key: p.key, name: p.name, sets: p.sets }); }}
                 onDragEnd={onDragEnd}
                 className="flex cursor-move items-center gap-2 rounded border border-indigo-200 bg-white px-2 py-1 text-xs"
               >
@@ -650,10 +650,10 @@ function DropZone({ onDrop }: { onDrop: () => void }) {
   const [over, setOver] = useState(false);
   return (
     <li
-      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setOver(true); }}
       onDragLeave={() => setOver(false)}
-      onDrop={() => { setOver(false); onDrop(); }}
-      className={`mx-3 rounded transition-all ${over ? 'my-1 h-6 border-2 border-dashed border-indigo-400 bg-indigo-50' : 'h-1'}`}
+      onDrop={(e) => { e.preventDefault(); setOver(false); onDrop(); }}
+      className={`mx-3 rounded transition-all ${over ? 'my-1 h-7 border-2 border-dashed border-indigo-400 bg-indigo-50' : 'h-1.5 bg-slate-100'}`}
     />
   );
 }
@@ -683,23 +683,22 @@ function DayCard({ day, recipeId, busy, onOpenEditor, onRemoveSlot, dragging, on
       </div>
       {day.note ? (
         <div
-          onDragOver={dragging ? (e) => e.preventDefault() : undefined}
-          onDrop={dragging ? () => onDropAt(day.weekday, 0) : undefined}
-          className={`px-4 py-3 text-sm text-amber-600 ${dragging ? 'ring-2 ring-inset ring-indigo-200' : ''}`}
+          onDragOver={dragging ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } : undefined}
+          onDrop={dragging ? (e) => { e.preventDefault(); onDropAt(day.weekday, 0); } : undefined}
+          className={`px-4 py-3 text-sm text-amber-600 ${dragging ? 'rounded ring-2 ring-inset ring-indigo-300' : ''}`}
         >{day.note}{dragging ? ' — drop here to add' : ''}</div>
       ) : (
         <ul>
           {day.slots.map((s, i) => (
             <Fragment key={i}>
               {dragging && <DropZone onDrop={() => onDropAt(day.weekday, i)} />}
-              <li className="flex items-center gap-2 border-b border-slate-50 pr-3 text-sm hover:bg-indigo-50/40">
-                <span
-                  draggable
-                  onDragStart={() => onSlotDragStart(day.weekday, i)}
-                  onDragEnd={onDragEnd}
-                  className="cursor-move pl-3 text-slate-300 hover:text-slate-500"
-                  title="Drag to move"
-                >⠿</span>
+              <li
+                draggable
+                onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'slot'); onSlotDragStart(day.weekday, i); }}
+                onDragEnd={onDragEnd}
+                className="flex cursor-move items-center gap-2 border-b border-slate-50 pr-3 text-sm hover:bg-indigo-50/40"
+              >
+                <span className="pl-3 text-slate-300" title="Drag to move">⠿</span>
                 <button onClick={() => onOpenEditor(day.weekday, i)} className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left">
                   {s.group && HAS_MAP.has(s.group) ? (
                     <img src={`/maps/${s.group}.svg`} alt="" className="size-7 shrink-0 object-contain" />
