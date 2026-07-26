@@ -214,10 +214,6 @@ export default function Preview() {
   const patchPending = (key: string, patch: Partial<PendingItem>) =>
     setPending((p) => p.map((x) => (x.key === key ? { ...x, ...patch } : x)));
   const removePending = (key: string) => setPending((p) => p.filter((x) => x.key !== key));
-  async function addPending(item: PendingItem) {
-    await placeVariation(item.key, item.sets, item.weekday);
-    removePending(item.key);
-  }
 
   return (
     <div className="flex h-full">
@@ -315,7 +311,6 @@ export default function Preview() {
               onStage={stagePending}
               onPatchPending={patchPending}
               onRemovePending={removePending}
-              onAddPending={addPending}
               onUpdateSlot={updateSlot}
               onDragStartTray={(item) => setDragItem({ kind: 'tray', key: item.key, name: item.name, sets: item.sets })}
               onDragEnd={() => setDragItem(null)}
@@ -406,7 +401,7 @@ function SplitGroup({
 // Per-scenario coverage + authoring: weekly sets per group (fair-share target),
 // every muscle and every variation beneath it (zeros included), and a waiting
 // list to add a missing variation to a day of this scenario.
-function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPending, onRemovePending, onAddPending, onUpdateSlot, onDragStartTray, onDragEnd }: {
+function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPending, onRemovePending, onUpdateSlot, onDragStartTray, onDragEnd }: {
   program: GenDay[];
   catalog: Catalog;
   busy: boolean;
@@ -414,14 +409,12 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
   onStage: (key: string, name: string) => void;
   onPatchPending: (key: string, patch: Partial<PendingItem>) => void;
   onRemovePending: (key: string) => void;
-  onAddPending: (item: PendingItem) => Promise<void>;
   onUpdateSlot: (weekday: number, index: number, patch: { sets?: number }) => void;
   onDragStartTray: (item: { key: string; name: string; sets: number }) => void;
   onDragEnd: () => void;
 }) {
   const perGroup = perGroupSets(program);
   const totalSets = COVERAGE_GROUPS.reduce((t, g) => t + (perGroup[g] ?? 0), 0);
-  const dayOptions = program.map((d) => ({ weekday: d.weekday, name: d.dayName }));
 
   // Where each family currently sits, so a single-slot family can be edited here.
   const familyLoc = useMemo(() => {
@@ -534,30 +527,38 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
 
       {pending.length > 0 && (
         <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 p-2">
-          <div className="mb-1.5 text-xs font-bold text-indigo-700">To place ({pending.length}) — drag onto a day, or set the count + day and Add. This locks the scenario.</div>
+          <div className="mb-1.5 text-xs font-bold text-indigo-700">To place ({pending.length}) — drag each onto the day and spot you want</div>
           <div className="grid gap-1.5">
-            {pending.map((p) => (
-              <div
-                key={p.key}
-                draggable
-                onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'tray'); onDragStartTray({ key: p.key, name: p.name, sets: p.sets }); }}
-                onDragEnd={onDragEnd}
-                className="flex cursor-move items-center gap-2 rounded border border-indigo-200 bg-white px-2 py-1 text-xs"
-              >
-                <span className="text-slate-300">⠿</span>
-                <span className="flex-1 font-semibold text-slate-800">{p.name}</span>
-                <div className="flex items-center overflow-hidden rounded border border-slate-300 bg-white">
-                  <button onClick={() => onPatchPending(p.key, { sets: Math.max(1, p.sets - 1) })} className="px-1.5 text-slate-500 hover:bg-slate-100">−</button>
-                  <span className="w-12 text-center tabular-nums">{p.sets} set{p.sets > 1 ? 's' : ''}</span>
-                  <button onClick={() => onPatchPending(p.key, { sets: p.sets + 1 })} className="px-1.5 text-slate-500 hover:bg-slate-100">+</button>
+            {pending.map((p) => {
+              const grp = catalog.familiesByKey.get(p.key)?.muscle_group_raw ?? null;
+              return (
+                <div
+                  key={p.key}
+                  draggable
+                  onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'tray'); onDragStartTray({ key: p.key, name: p.name, sets: p.sets }); }}
+                  onDragEnd={onDragEnd}
+                  className="flex cursor-move items-center gap-2 rounded-lg border border-indigo-200 bg-white px-2 py-2 text-sm shadow-sm"
+                >
+                  <span className="text-slate-300" title="Drag to a day">⠿</span>
+                  {grp && HAS_MAP.has(grp) ? (
+                    <img src={`/maps/${grp}.svg`} alt="" className="size-7 shrink-0 object-contain" />
+                  ) : (
+                    <span className="size-7 shrink-0" />
+                  )}
+                  <span className="flex-1 font-semibold text-slate-800">{p.name}</span>
+                  <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200">
+                    <button onClick={() => onPatchPending(p.key, { sets: Math.max(1, p.sets - 1) })} className="px-1.5 text-slate-500 hover:bg-slate-100">−</button>
+                    <span className="w-9 text-center text-xs tabular-nums text-slate-600">{p.sets} ×</span>
+                    <button onClick={() => onPatchPending(p.key, { sets: p.sets + 1 })} className="px-1.5 text-slate-500 hover:bg-slate-100">+</button>
+                  </div>
+                  <button disabled={busy} onClick={() => onRemovePending(p.key)} className="shrink-0 text-slate-300 hover:text-rose-500 disabled:opacity-40" title="Remove from list">
+                    <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                      <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
                 </div>
-                <select value={p.weekday} onChange={(e) => onPatchPending(p.key, { weekday: parseInt(e.target.value, 10) })} className="rounded border border-slate-300 bg-white px-1.5 py-1">
-                  {dayOptions.map((d) => <option key={d.weekday} value={d.weekday}>{d.name}</option>)}
-                </select>
-                <button disabled={busy} onClick={() => onAddPending(p)} className="rounded bg-indigo-600 px-2.5 py-1 font-bold text-white hover:bg-indigo-700 disabled:opacity-50">Add</button>
-                <button onClick={() => onRemovePending(p.key)} className="px-1 text-slate-400 hover:text-slate-700">✕</button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
