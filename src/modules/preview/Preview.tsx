@@ -314,7 +314,6 @@ export default function Preview() {
               onStage={stagePending}
               onPatchPending={patchPending}
               onRemovePending={removePending}
-              onUpdateSlot={updateSlot}
               onDragStartTray={(item) => setDragItem({ kind: 'tray', slotKind: item.slotKind, key: item.key, sets: item.sets })}
               onDragEnd={() => setDragItem(null)}
             />
@@ -404,7 +403,7 @@ function SplitGroup({
 // Per-scenario coverage + authoring: weekly sets per group (fair-share target),
 // every muscle and every variation beneath it (zeros included), and a waiting
 // list to add a missing variation to a day of this scenario.
-function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPending, onRemovePending, onUpdateSlot, onDragStartTray, onDragEnd }: {
+function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPending, onRemovePending, onDragStartTray, onDragEnd }: {
   program: GenDay[];
   catalog: Catalog;
   busy: boolean;
@@ -412,19 +411,11 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
   onStage: (slotKind: SlotKind, key: string, name: string, group: string | null) => void;
   onPatchPending: (key: string, patch: Partial<PendingItem>) => void;
   onRemovePending: (key: string) => void;
-  onUpdateSlot: (weekday: number, index: number, patch: { sets?: number }) => void;
   onDragStartTray: (item: { slotKind: SlotKind; key: string; sets: number }) => void;
   onDragEnd: () => void;
 }) {
   const perGroup = perGroupSets(program);
   const totalSets = COVERAGE_GROUPS.reduce((t, g) => t + (perGroup[g] ?? 0), 0);
-
-  // Where each family currently sits, so a single-slot family can be edited here.
-  const familyLoc = useMemo(() => {
-    const m: Record<string, { weekday: number; index: number }[]> = {};
-    for (const d of program) d.slots.forEach((s, i) => { if (s.familyKey) (m[s.familyKey] ??= []).push({ weekday: d.weekday, index: i }); });
-    return m;
-  }, [program]);
 
   const familyMuscle = useMemo(() => {
     const m: Record<string, string> = {};
@@ -502,33 +493,23 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
                       <div className="flex flex-1 flex-wrap gap-1">
                         {m.families.map((f) => {
                           const fs = perFamily[f.key] ?? 0;
-                          const locs = familyLoc[f.key] ?? [];
-                          if (fs > 0) {
-                            // On one day → editable count here; on several → edit on the day card.
-                            const single = locs.length === 1 ? locs[0] : null;
-                            return (
-                              <span key={f.key} className="flex items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-slate-600">
-                                {f.name}
-                                {single ? (
-                                  <span className="flex items-center overflow-hidden rounded border border-slate-200 text-slate-900">
-                                    <button onClick={() => onUpdateSlot(single.weekday, single.index, { sets: Math.max(1, fs - 1) })} className="px-1 text-slate-400 hover:bg-slate-100">−</button>
-                                    <span className="w-4 text-center font-semibold tabular-nums">{fs}</span>
-                                    <button onClick={() => onUpdateSlot(single.weekday, single.index, { sets: fs + 1 })} className="px-1 text-slate-400 hover:bg-slate-100">+</button>
-                                  </span>
-                                ) : (
-                                  <span className="font-semibold tabular-nums text-slate-900">{fs}</span>
-                                )}
-                              </span>
-                            );
-                          }
                           const staged = stagedKeys.has(f.key);
+                          // Always offer "+" — even for a variation already in the program,
+                          // so you can add ANOTHER instance (same variation on a 2nd day).
                           return (
-                            <button
+                            <span
                               key={f.key}
-                              disabled={staged}
-                              onClick={() => onStage('variation', f.key, f.name, g)}
-                              className={`rounded border border-dashed px-1.5 py-0.5 ${staged ? 'border-indigo-300 bg-indigo-50 text-indigo-500' : 'border-slate-300 text-slate-400 hover:border-indigo-400 hover:text-indigo-600'}`}
-                            >{staged ? '✓ ' : '+ '}{f.name}</button>
+                              className={`flex items-center gap-1 rounded border px-1.5 py-0.5 ${fs > 0 ? 'border-slate-200 bg-white text-slate-600' : 'border-dashed border-slate-300 text-slate-400'}`}
+                            >
+                              {f.name}
+                              {fs > 0 && <span className="font-semibold tabular-nums text-slate-900">{fs}</span>}
+                              <button
+                                disabled={staged}
+                                onClick={() => onStage('variation', f.key, f.name, g)}
+                                title={fs > 0 ? `Add another ${f.name}` : `Add ${f.name}`}
+                                className={staged ? 'text-indigo-400' : 'text-slate-300 hover:text-indigo-600'}
+                              >{staged ? '✓' : '+'}</button>
+                            </span>
                           );
                         })}
                       </div>
@@ -640,31 +621,6 @@ function Stepper({ label, value, min, step, suffix, onChange }: {
     </div>
   );
 }
-
-// Plain number as text; click it to edit inline (commits on blur / Enter).
-function EditableNum({ value, onCommit, width = 'w-8' }: { value: number; onCommit: (n: number) => void; width?: string }) {
-  const [editing, setEditing] = useState(false);
-  const [v, setV] = useState(String(value));
-  useEffect(() => setV(String(value)), [value]);
-  if (editing) {
-    return (
-      <input
-        autoFocus
-        type="number"
-        value={v}
-        onChange={(e) => setV(e.target.value)}
-        onFocus={(e) => e.target.select()}
-        onBlur={() => { const n = parseInt(v || '0', 10); if (Number.isFinite(n) && n > 0 && n !== value) onCommit(n); setEditing(false); }}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') (e.target as HTMLInputElement).blur(); }}
-        className={`${width} rounded border border-indigo-400 bg-white px-1 text-right tabular-nums text-slate-800 outline-none`}
-      />
-    );
-  }
-  return (
-    <button onClick={() => setEditing(true)} className="tabular-nums hover:text-indigo-600 hover:underline">{value}</button>
-  );
-}
-
 
 // A slim drop target between/around slots that expands when dragged over.
 function DropZone({ onDrop }: { onDrop: () => void }) {
