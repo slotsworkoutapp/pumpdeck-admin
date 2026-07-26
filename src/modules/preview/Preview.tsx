@@ -140,11 +140,45 @@ export default function Preview() {
   function lockedBase(): LockedDay[] {
     return (lockedMap[activeId] ?? toLockShape(liveProgram)).map((d) => ({ ...d, slots: [...d.slots] }));
   }
-  async function saveLockedDays(newDays: LockedDay[]) {
+  // Re-shape the OTHER goal's program to match this structure (same variations,
+  // order, days), keeping its own per-slot loading where a slot matches, and
+  // goal-appropriate defaults for anything new. Keeps hypertrophy/strength in
+  // structural sync while letting sets/reps/rest differ per goal.
+  function deriveForGoal(structure: LockedDay[], goalKey: string, otherBase: LockedDay[]): LockedDay[] {
+    const g = (goals ?? []).find((x) => x.goal_key === goalKey);
+    const reps = Math.max(3, 10 + (g?.rep_shift ?? 0));
+    const rest = Math.min(180, Math.round((90 * (g?.rest_multiplier ?? 1)) / 15) * 15);
+    const setsBase = Math.max(2, 3 + (g?.set_shift ?? 0));
+    const prevByDay = new Map(otherBase.map((d) => [d.weekday, [...d.slots]]));
+    return structure.map((d) => {
+      const used: Record<string, number> = {};
+      return {
+        ...d,
+        slots: d.slots.map((s) => {
+          const idk = `${s.familyKey ?? ''}|${s.muscleId ?? ''}`;
+          const occ = used[idk] ?? 0; used[idk] = occ + 1;
+          const prev = (prevByDay.get(d.weekday) ?? []).filter((ps) => `${ps.familyKey ?? ''}|${ps.muscleId ?? ''}` === idk)[occ];
+          return prev
+            ? { ...s, sets: prev.sets, reps: prev.reps, rest: prev.rest }   // keep the other goal's loading
+            : { ...s, sets: setsBase, reps, rest };                          // new slot → goal defaults
+        }),
+      };
+    });
+  }
+
+  // Save the current goal. When `mirrorStructure` (a variation add/move/remove),
+  // also re-shape the other goal to the same structure. Loading edits don't mirror.
+  async function saveLockedDays(newDays: LockedDay[], mirrorStructure = false) {
     if (!active) return;
     setBusy(true);
-    // Editing preserves the current review state — it does NOT mark it reviewed.
-    const res = await saveProgram(active.splitKey, active.minutes, active.goalKey, newDays, isReviewed);
+    let res = await saveProgram(active.splitKey, active.minutes, active.goalKey, newDays, isReviewed);
+    const other = (goals ?? []).find((g) => g.goal_key !== active.goalKey);
+    if (!res.error && mirrorStructure && other) {
+      const otherId = lockId(active.splitKey, active.minutes, other.goal_key);
+      const otherBase = lockedMap[otherId] ?? toLockShape(genFor(active.splitKey, active.minutes, other.goal_key));
+      const otherDays = deriveForGoal(newDays, other.goal_key, otherBase);
+      res = await saveProgram(active.splitKey, active.minutes, other.goal_key, otherDays, reviewedMap[otherId] ?? false);
+    }
     setBusy(false);
     if (res.error) { alert(`Couldn't save: ${res.error.message}`); return; }
     reloadLocks();
@@ -167,7 +201,7 @@ export default function Preview() {
     const day = base.find((d) => d.weekday === weekday);
     if (!day) return;
     day.slots.splice(index ?? day.slots.length, 0, buildSlot(slotKind, key, sets));
-    await saveLockedDays(base);
+    await saveLockedDays(base, true); // structure → mirror to the other goal
   }
   // Move an existing slot to another position/day.
   async function moveSlot(fromW: number, fromI: number, toW: number, toI: number) {
@@ -180,9 +214,9 @@ export default function Preview() {
     let idx = toI;
     if (fromW === toW && toI > fromI) idx -= 1; // account for the removal shift
     tgt.slots.splice(idx, 0, moved);
-    await saveLockedDays(base);
+    await saveLockedDays(base, true); // structure → mirror to the other goal
   }
-  // Edit a slot's sets / reps / rest in place.
+  // Edit a slot's sets / reps / rest in place — PER GOAL, does not mirror.
   async function updateSlot(weekday: number, index: number, patch: { sets?: number; reps?: number; rest?: number }) {
     const base = lockedBase();
     const day = base.find((d) => d.weekday === weekday);
@@ -196,7 +230,7 @@ export default function Preview() {
     const day = base.find((d) => d.weekday === weekday);
     if (!day) return;
     day.slots.splice(index, 1);
-    await saveLockedDays(base);
+    await saveLockedDays(base, true); // structure → mirror to the other goal
   }
   // Drop resolves to a place (from tray) or a move (existing slot).
   async function handleDrop(weekday: number, index: number) {
