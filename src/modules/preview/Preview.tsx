@@ -70,6 +70,15 @@ export default function Preview() {
   const total = orderedSplits.length * TIMES.length * (goals?.length ?? 0);
   const doneCount = Object.keys(lockedMap).length;
 
+  // family key → its primary muscle id (first exercise), for placing a variation.
+  const familyMuscle = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const e of catalog?.exercises ?? []) {
+      if (e.movement_family_key && e.primary_muscle_id && !(e.movement_family_key in m)) m[e.movement_family_key] = e.primary_muscle_id;
+    }
+    return m;
+  }, [catalog]);
+
   function genFor(splitKey: string, minutes: number, goalKey: string): GenDay[] {
     const s = orderedSplits.find((x) => x.key === splitKey);
     const g = goals?.find((x) => x.goal_key === goalKey);
@@ -124,6 +133,28 @@ export default function Preview() {
       reloadLocks();
     }
     setEditing(s);
+  }
+
+  // Add a variation to a specific day of THIS scenario. Writes to the scenario's
+  // locked program (auto-locks/freezes the current program first), so no other
+  // split is affected. Reps/rest default to goal-appropriate values.
+  async function placeVariation(familyKey: string, sets: number, weekday: number) {
+    if (!active || !goal) return;
+    const fam = catalog!.familiesByKey.get(familyKey);
+    const reps = Math.max(3, 10 + goal.rep_shift);
+    const rest = Math.min(180, Math.round((90 * goal.rest_multiplier) / 15) * 15);
+    const slot = {
+      familyKey, muscleId: null, sets, reps, rest,
+      muscle: familyMuscle[familyKey], label: fam?.display_name ?? familyKey,
+      group: fam?.muscle_group_raw ?? null, kind: 'variation', slotId: null,
+    };
+    const base = lockedMap[activeId] ?? toLockShape(liveProgram);
+    const newDays = base.map((d) => (d.weekday === weekday ? { ...d, slots: [...d.slots, slot] } : d));
+    setBusy(true);
+    const res = await lockProgram(active.splitKey, active.minutes, active.goalKey, newDays as LockedDay[]);
+    setBusy(false);
+    if (res.error) { alert(`Couldn't add: ${res.error.message}`); return; }
+    reloadLocks();
   }
 
   return (
@@ -205,7 +236,7 @@ export default function Preview() {
               </div>
             )}
 
-            <CoverageStrip program={program} catalog={catalog} />
+            <CoverageStrip key={activeId} program={program} catalog={catalog} busy={busy} onPlace={placeVariation} />
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {program.map((d, i) => (
@@ -266,60 +297,142 @@ function SplitGroup({
   );
 }
 
-// Per-scenario coverage: weekly sets per muscle GROUP (with the same fair-share
-// red flag as the Coverage page) plus a per-MUSCLE breakdown so hidden sub-muscles
-// (calves, rear delts) are visible while reviewing.
-function CoverageStrip({ program, catalog }: { program: GenDay[]; catalog: Catalog }) {
+// Per-scenario coverage + authoring: weekly sets per group (fair-share target),
+// every muscle and every variation beneath it (zeros included), and a waiting
+// list to add a missing variation to a day of this scenario.
+function CoverageStrip({ program, catalog, busy, onPlace }: {
+  program: GenDay[];
+  catalog: Catalog;
+  busy: boolean;
+  onPlace: (familyKey: string, sets: number, weekday: number) => Promise<void>;
+}) {
   const perGroup = perGroupSets(program);
-  const perMuscleByGroup = useMemo(() => {
-    // Sets actually delivered, keyed by muscle id.
-    const acc: Record<string, number> = {};
-    for (const d of program) for (const s of d.slots) if (s.muscle) acc[s.muscle] = (acc[s.muscle] ?? 0) + s.sets;
-    // Every muscle in each group (from the catalog), zeros included, in catalog order.
-    const map: Record<string, { name: string; sets: number; order: number }[]> = {};
-    for (const m of catalog.muscles) {
-      (map[m.group_raw] ??= []).push({ name: m.name, sets: acc[m.id] ?? 0, order: m.sort_order });
-    }
-    for (const g of Object.keys(map)) map[g].sort((a, b) => a.order - b.order);
-    return map;
-  }, [program, catalog]);
-
   const totalSets = COVERAGE_GROUPS.reduce((t, g) => t + (perGroup[g] ?? 0), 0);
+  const dayOptions = program.map((d) => ({ weekday: d.weekday, name: d.dayName }));
+  const [pending, setPending] = useState<{ key: string; name: string; sets: number; weekday: number }[]>([]);
+
+  const familyMuscle = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const e of catalog.exercises) if (e.movement_family_key && e.primary_muscle_id && !(e.movement_family_key in m)) m[e.movement_family_key] = e.primary_muscle_id;
+    return m;
+  }, [catalog]);
+
+  // Sets delivered per muscle id and per family key.
+  const { perMuscle, perFamily } = useMemo(() => {
+    const pm: Record<string, number> = {};
+    const pf: Record<string, number> = {};
+    for (const d of program) for (const s of d.slots) {
+      if (s.muscle) pm[s.muscle] = (pm[s.muscle] ?? 0) + s.sets;
+      if (s.familyKey) pf[s.familyKey] = (pf[s.familyKey] ?? 0) + s.sets;
+    }
+    return { perMuscle: pm, perFamily: pf };
+  }, [program]);
+
+  // group → its muscles (catalog order), each with its families (catalog order).
+  const groupData = useMemo(() => {
+    const famByMuscle: Record<string, { key: string; name: string; order: number }[]> = {};
+    for (const f of catalog.families) {
+      const mid = familyMuscle[f.key];
+      if (!mid) continue;
+      (famByMuscle[mid] ??= []).push({ key: f.key, name: f.display_name, order: f.sort_order });
+    }
+    for (const k of Object.keys(famByMuscle)) famByMuscle[k].sort((a, b) => a.order - b.order);
+    const byGroup: Record<string, { id: string; name: string; families: { key: string; name: string; order: number }[] }[]> = {};
+    for (const m of [...catalog.muscles].sort((a, b) => a.sort_order - b.sort_order)) {
+      (byGroup[m.group_raw] ??= []).push({ id: m.id, name: m.name, families: famByMuscle[m.id] ?? [] });
+    }
+    return byGroup;
+  }, [catalog, familyMuscle]);
+
+  const stagedKeys = new Set(pending.map((p) => p.key));
+  const stage = (key: string, name: string) =>
+    setPending((p) => (p.some((x) => x.key === key) ? p : [...p, { key, name, sets: 3, weekday: dayOptions[0]?.weekday ?? 2 }]));
+  const patch = (key: string, p: Partial<{ sets: number; weekday: number }>) =>
+    setPending((list) => list.map((x) => (x.key === key ? { ...x, ...p } : x)));
+  async function place(key: string) {
+    const item = pending.find((p) => p.key === key);
+    if (!item) return;
+    await onPlace(item.key, item.sets, item.weekday);
+    setPending((p) => p.filter((x) => x.key !== key));
+  }
 
   return (
     <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
       <div className="mb-2 flex items-baseline justify-between">
         <span className="text-xs font-semibold uppercase text-slate-500">Weekly coverage</span>
-        <span className="text-xs text-slate-400">{totalSets} sets · sets / balanced target · <span className="text-rose-600">red</span> under · <span className="text-amber-600">amber</span> over</span>
+        <span className="text-xs text-slate-400">{totalSets} sets · sets / target · <span className="text-rose-600">red</span> under · <span className="text-amber-600">amber</span> over · <span className="text-indigo-600">+</span> add a variation</span>
       </div>
-      <div className="grid gap-1.5">
+
+      <div className="grid gap-2">
         {COVERAGE_GROUPS.map((g) => {
           const n = perGroup[g] ?? 0;
           const target = n > 0 ? groupTarget(perGroup, g) : 0;
           const status = coverageStatus(n, target);
           const untrained = n === 0;
+          const muscles = groupData[g] ?? [];
           return (
-            <div key={g} className={`flex items-center gap-2 ${untrained ? 'opacity-45' : ''}`}>
-              <div className="flex w-32 shrink-0 items-center gap-1.5">
-                {HAS_MAP.has(g) ? (
-                  <img src={`/maps/${g}.svg`} alt="" className="size-6 shrink-0 object-contain" />
-                ) : (
-                  <span className="size-6 shrink-0" />
-                )}
-                <span className="text-sm font-semibold text-slate-700">{GROUP_LABEL[g]}</span>
+            <div key={g}>
+              <div className="flex items-center gap-2">
+                <div className={`flex w-32 shrink-0 items-center gap-1.5 ${untrained ? 'opacity-60' : ''}`}>
+                  {HAS_MAP.has(g) ? <img src={`/maps/${g}.svg`} alt="" className="size-6 shrink-0 object-contain" /> : <span className="size-6 shrink-0" />}
+                  <span className="text-sm font-semibold text-slate-700">{GROUP_LABEL[g]}</span>
+                </div>
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-sm font-bold tabular-nums ${untrained ? 'text-slate-400' : statusChip(status)}`}>{n}/{target}</span>
               </div>
-              <span className={`shrink-0 rounded px-1.5 py-0.5 text-right text-sm font-bold tabular-nums ${untrained ? 'text-slate-400' : statusChip(status)}`}>{n}/{target}</span>
-              <div className="flex flex-1 flex-wrap gap-1">
-                {(perMuscleByGroup[g] ?? []).map((m) => (
-                  <span key={m.name} className={`rounded border px-1.5 py-0.5 text-xs ${m.sets === 0 ? 'border-slate-100 bg-slate-50 text-slate-400' : 'border-slate-200 bg-white text-slate-500'}`}>
-                    {m.name} <span className={`font-semibold tabular-nums ${m.sets === 0 ? 'text-slate-400' : 'text-slate-800'}`}>{m.sets}</span>
-                  </span>
-                ))}
+              <div className="mt-0.5 grid gap-0.5 pl-8">
+                {muscles.map((m) => {
+                  const ms = perMuscle[m.id] ?? 0;
+                  return (
+                    <div key={m.id} className="flex items-baseline gap-2 text-xs">
+                      <span className={`w-24 shrink-0 ${ms === 0 ? 'text-slate-400' : 'text-slate-600'}`}>{m.name} <span className="font-bold tabular-nums">{ms}</span></span>
+                      <div className="flex flex-1 flex-wrap gap-1">
+                        {m.families.map((f) => {
+                          const fs = perFamily[f.key] ?? 0;
+                          if (fs > 0) return (
+                            <span key={f.key} className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-slate-600">{f.name} <span className="font-semibold tabular-nums text-slate-900">{fs}</span></span>
+                          );
+                          const staged = stagedKeys.has(f.key);
+                          return (
+                            <button
+                              key={f.key}
+                              disabled={staged}
+                              onClick={() => stage(f.key, f.name)}
+                              className={`rounded border border-dashed px-1.5 py-0.5 ${staged ? 'border-indigo-300 bg-indigo-50 text-indigo-500' : 'border-slate-300 text-slate-400 hover:border-indigo-400 hover:text-indigo-600'}`}
+                            >{staged ? '✓ ' : '+ '}{f.name}</button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
         })}
       </div>
+
+      {pending.length > 0 && (
+        <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 p-2">
+          <div className="mb-1.5 text-xs font-bold text-indigo-700">To place ({pending.length}) — set the count, pick a day, then Add. This locks the scenario.</div>
+          <div className="grid gap-1.5">
+            {pending.map((p) => (
+              <div key={p.key} className="flex items-center gap-2 text-xs">
+                <span className="flex-1 font-semibold text-slate-800">{p.name}</span>
+                <div className="flex items-center overflow-hidden rounded border border-slate-300 bg-white">
+                  <button onClick={() => patch(p.key, { sets: Math.max(1, p.sets - 1) })} className="px-1.5 text-slate-500 hover:bg-slate-100">−</button>
+                  <span className="w-12 text-center tabular-nums">{p.sets} set{p.sets > 1 ? 's' : ''}</span>
+                  <button onClick={() => patch(p.key, { sets: p.sets + 1 })} className="px-1.5 text-slate-500 hover:bg-slate-100">+</button>
+                </div>
+                <select value={p.weekday} onChange={(e) => patch(p.key, { weekday: parseInt(e.target.value, 10) })} className="rounded border border-slate-300 bg-white px-1.5 py-1">
+                  {dayOptions.map((d) => <option key={d.weekday} value={d.weekday}>{d.name}</option>)}
+                </select>
+                <button disabled={busy} onClick={() => place(p.key)} className="rounded bg-indigo-600 px-2.5 py-1 font-bold text-white hover:bg-indigo-700 disabled:opacity-50">Add</button>
+                <button onClick={() => setPending((x) => x.filter((y) => y.key !== p.key))} className="px-1 text-slate-400 hover:text-slate-700">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
