@@ -472,7 +472,7 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
                               <span key={f.key} className="flex items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-slate-600">
                                 {f.name}
                                 {single ? (
-                                  <EditableNum value={fs} onCommit={(n) => onUpdateSlot(single.weekday, single.index, { sets: n })} className="w-7 rounded bg-slate-50 px-0.5 text-right font-semibold tabular-nums text-slate-900 hover:bg-slate-100 focus:bg-white focus:outline-none" />
+                                  <span className="font-semibold text-slate-900"><EditableNum value={fs} onCommit={(n) => onUpdateSlot(single.weekday, single.index, { sets: n })} width="w-7" /></span>
                                 ) : (
                                   <span className="font-semibold tabular-nums text-slate-900">{fs}</span>
                                 )}
@@ -532,20 +532,27 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
   );
 }
 
-// A small numeric field that commits on blur / Enter (not per keystroke).
-function EditableNum({ value, onCommit, className }: { value: number; onCommit: (n: number) => void; className?: string }) {
+// Plain number as text; click it to edit inline (commits on blur / Enter).
+function EditableNum({ value, onCommit, width = 'w-8' }: { value: number; onCommit: (n: number) => void; width?: string }) {
+  const [editing, setEditing] = useState(false);
   const [v, setV] = useState(String(value));
   useEffect(() => setV(String(value)), [value]);
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="number"
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        onFocus={(e) => e.target.select()}
+        onBlur={() => { const n = parseInt(v || '0', 10); if (Number.isFinite(n) && n > 0 && n !== value) onCommit(n); setEditing(false); }}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') (e.target as HTMLInputElement).blur(); }}
+        className={`${width} rounded border border-indigo-400 bg-white px-1 text-right tabular-nums text-slate-800 outline-none`}
+      />
+    );
+  }
   return (
-    <input
-      type="number"
-      value={v}
-      onChange={(e) => setV(e.target.value)}
-      onBlur={() => { const n = parseInt(v || '0', 10); if (Number.isFinite(n) && n > 0 && n !== value) onCommit(n); else setV(String(value)); }}
-      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-      onClick={(e) => e.stopPropagation()}
-      className={className}
-    />
+    <button onClick={() => setEditing(true)} className="tabular-nums hover:text-indigo-600 hover:underline">{value}</button>
   );
 }
 
@@ -575,7 +582,6 @@ function DayCard({ day, recipeId, busy, onUpdateSlot, onRemoveSlot, dragging, on
   onDropAt: (weekday: number, index: number) => void;
 }) {
   const totalSets = day.slots.reduce((n, s) => n + s.sets, 0);
-  const numCls = 'w-9 rounded border border-transparent bg-transparent px-1 py-0.5 text-right tabular-nums text-slate-600 hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:outline-none';
   return (
     <div className={`rounded-xl border bg-white ${dragging ? 'border-indigo-200' : 'border-slate-200'}`}>
       <div className="flex items-baseline justify-between border-b border-slate-100 px-4 py-2">
@@ -598,12 +604,12 @@ function DayCard({ day, recipeId, busy, onUpdateSlot, onRemoveSlot, dragging, on
           {day.slots.map((s, i) => (
             <Fragment key={i}>
               {dragging && <DropZone onDrop={() => onDropAt(day.weekday, i)} />}
-              <li className="group flex items-center gap-1.5 border-b border-slate-50 px-3 py-2 text-sm">
+              <li className="flex items-center gap-2 border-b border-slate-50 px-3 py-2 text-sm">
                 <span
                   draggable
                   onDragStart={() => onSlotDragStart(day.weekday, i)}
                   onDragEnd={onDragEnd}
-                  className="cursor-move px-0.5 text-slate-300 hover:text-slate-500"
+                  className="cursor-move text-slate-300 hover:text-slate-500"
                   title="Drag to move"
                 >⠿</span>
                 {s.group && HAS_MAP.has(s.group) ? (
@@ -613,19 +619,24 @@ function DayCard({ day, recipeId, busy, onUpdateSlot, onRemoveSlot, dragging, on
                 )}
                 <span className="flex-1 truncate font-semibold text-slate-800">{s.label}</span>
                 {s.kind === 'muscle' && <span className="text-[10px] font-bold uppercase text-indigo-500">musc</span>}
-                <EditableNum value={s.sets} onCommit={(n) => onUpdateSlot(day.weekday, i, { sets: n })} className={numCls} />
-                <span className="text-slate-300">×</span>
-                <EditableNum value={s.reps} onCommit={(n) => onUpdateSlot(day.weekday, i, { reps: n })} className={numCls} />
-                <span className="ml-1 flex items-baseline">
-                  <EditableNum value={s.rest} onCommit={(n) => onUpdateSlot(day.weekday, i, { rest: n })} className={`${numCls} text-slate-400`} />
-                  <span className="text-xs text-slate-400">s</span>
+                <span className="flex items-center gap-1 text-slate-500">
+                  <EditableNum value={s.sets} onCommit={(n) => onUpdateSlot(day.weekday, i, { sets: n })} width="w-6" />
+                  <span className="text-slate-300">×</span>
+                  <EditableNum value={s.reps} onCommit={(n) => onUpdateSlot(day.weekday, i, { reps: n })} width="w-8" />
+                </span>
+                <span className="flex items-center text-xs text-slate-400">
+                  <EditableNum value={s.rest} onCommit={(n) => onUpdateSlot(day.weekday, i, { rest: n })} width="w-9" />s
                 </span>
                 <button
                   disabled={busy}
                   onClick={() => onRemoveSlot(day.weekday, i)}
-                  className="ml-0.5 px-1 text-slate-300 opacity-0 hover:text-rose-600 group-hover:opacity-100 disabled:opacity-30"
-                  title="Remove"
-                >🗑</button>
+                  className="text-slate-300 hover:text-rose-500 disabled:opacity-40"
+                  title="Remove exercise"
+                >
+                  <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                    <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
               </li>
             </Fragment>
           ))}
