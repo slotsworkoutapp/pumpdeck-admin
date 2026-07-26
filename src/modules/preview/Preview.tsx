@@ -56,6 +56,8 @@ export default function Preview() {
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [dragItem, setDragItem] = useState<DragItem | null>(null);
   const [editingSlot, setEditingSlot] = useState<{ weekday: number; index: number } | null>(null);
+  const [scenariosOpen, setScenariosOpen] = useState(() => localStorage.getItem('pd_scenarios_open') !== '0');
+  useEffect(() => { localStorage.setItem('pd_scenarios_open', scenariosOpen ? '1' : '0'); }, [scenariosOpen]);
 
   const lockedMap = locks ?? {};
 
@@ -214,31 +216,44 @@ export default function Preview() {
 
   return (
     <div className="flex h-full">
-      {/* ---- Scenario checklist ---- */}
-      <aside className="w-80 shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50">
-        <div className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-4 py-3">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-bold text-slate-900">Scenarios</h2>
-            <span className="text-xs font-semibold tabular-nums text-slate-500">{doneCount} / {total} locked</span>
+      {/* ---- Scenario checklist (collapsible) ---- */}
+      {scenariosOpen ? (
+        <aside className="w-80 shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50">
+          <div className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900">Scenarios</h2>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold tabular-nums text-slate-500">{doneCount} / {total} locked</span>
+                <button onClick={() => setScenariosOpen(false)} className="text-slate-400 hover:text-slate-700" title="Collapse">«</button>
+              </div>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+              <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: total ? `${(doneCount / total) * 100}%` : '0%' }} />
+            </div>
           </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
-            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: total ? `${(doneCount / total) * 100}%` : '0%' }} />
+          <div className="divide-y divide-slate-200">
+            {orderedSplits.map((s) => (
+              <SplitGroup
+                key={s.key}
+                split={s}
+                goals={goals}
+                locked={lockedMap}
+                activeId={activeId}
+                onSelect={(minutes, goalKey) => setActive({ splitKey: s.key, minutes, goalKey })}
+                onToggle={(minutes, goalKey) => toggleLock(s.key, minutes, goalKey)}
+              />
+            ))}
           </div>
-        </div>
-        <div className="divide-y divide-slate-200">
-          {orderedSplits.map((s) => (
-            <SplitGroup
-              key={s.key}
-              split={s}
-              goals={goals}
-              locked={lockedMap}
-              activeId={activeId}
-              onSelect={(minutes, goalKey) => setActive({ splitKey: s.key, minutes, goalKey })}
-              onToggle={(minutes, goalKey) => toggleLock(s.key, minutes, goalKey)}
-            />
-          ))}
-        </div>
-      </aside>
+        </aside>
+      ) : (
+        <button
+          onClick={() => setScenariosOpen(true)}
+          className="flex w-8 shrink-0 items-center justify-center border-r border-slate-200 bg-slate-50 hover:bg-slate-100"
+          title="Show scenarios"
+        >
+          <span className="rotate-180 text-xs font-bold tracking-wide text-slate-500 [writing-mode:vertical-rl]">Scenarios »</span>
+        </button>
+      )}
 
       {/* ---- Preview of the active scenario ---- */}
       <main className="flex-1 overflow-y-auto p-6">
@@ -691,10 +706,10 @@ function DayCard({ day, recipeId, busy, onOpenEditor, onRemoveSlot, dragging, on
                   ) : (
                     <span className="size-7 shrink-0" />
                   )}
-                  <span className="flex-1 truncate font-semibold text-slate-800">{s.label}</span>
-                  {s.kind === 'muscle' && <span className="text-[10px] font-bold uppercase text-indigo-500">musc</span>}
-                  <span className="tabular-nums text-slate-500">{s.sets} × {s.reps}</span>
-                  <span className="w-11 text-right text-xs tabular-nums text-slate-400">{s.rest}s</span>
+                  <span className="flex-1 font-semibold text-slate-800">{s.label}</span>
+                  {s.kind === 'muscle' && <span className="shrink-0 text-[10px] font-bold uppercase text-indigo-500">musc</span>}
+                  <span className="shrink-0 tabular-nums text-slate-500">{s.sets} × {s.reps}</span>
+                  <span className="w-11 shrink-0 text-right text-xs tabular-nums text-slate-400">{s.rest}s</span>
                 </button>
                 <button
                   disabled={busy}
