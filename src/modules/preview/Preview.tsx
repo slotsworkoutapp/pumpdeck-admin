@@ -55,6 +55,7 @@ export default function Preview() {
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [dragItem, setDragItem] = useState<DragItem | null>(null);
+  const [editingSlot, setEditingSlot] = useState<{ weekday: number; index: number } | null>(null);
 
   const lockedMap = locks ?? {};
 
@@ -65,8 +66,8 @@ export default function Preview() {
     }
   }, [active, splits, goals]);
 
-  // Clear the waiting list + any drag when the scenario changes.
-  useEffect(() => { setPending([]); setDragItem(null); }, [active?.splitKey, active?.minutes, active?.goalKey]);
+  // Clear the waiting list + any drag/edit when the scenario changes.
+  useEffect(() => { setPending([]); setDragItem(null); setEditingSlot(null); }, [active?.splitKey, active?.minutes, active?.goalKey]);
 
   const recipeIdByType = useMemo(() => {
     const m = new Map<string, string>();
@@ -311,7 +312,7 @@ export default function Preview() {
                   day={d}
                   recipeId={d.dayType ? recipeIdByType.get(d.dayType) : undefined}
                   busy={busy}
-                  onUpdateSlot={updateSlot}
+                  onOpenEditor={(weekday, index) => setEditingSlot({ weekday, index })}
                   onRemoveSlot={removeSlot}
                   dragging={!!dragItem}
                   onSlotDragStart={(weekday, index) => setDragItem({ kind: 'slot', weekday, index })}
@@ -323,6 +324,20 @@ export default function Preview() {
           </>
         )}
       </main>
+
+      {(() => {
+        const es = editingSlot;
+        const s = es ? program.find((d) => d.weekday === es.weekday)?.slots[es.index] : undefined;
+        if (!es || !s) return null;
+        return (
+          <SlotEditor
+            slot={{ label: s.label, sets: s.sets, reps: s.reps, rest: s.rest }}
+            saving={busy}
+            onSave={(patch) => { updateSlot(es.weekday, es.index, patch); setEditingSlot(null); }}
+            onClose={() => setEditingSlot(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -532,6 +547,64 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
   );
 }
 
+// A spacious editor card for one exercise's sets / reps / rest.
+function SlotEditor({ slot, saving, onSave, onClose }: {
+  slot: { label: string; sets: number; reps: number; rest: number };
+  saving: boolean;
+  onSave: (patch: { sets: number; reps: number; rest: number }) => void;
+  onClose: () => void;
+}) {
+  const [sets, setSets] = useState(slot.sets);
+  const [reps, setReps] = useState(slot.reps);
+  const [rest, setRest] = useState(slot.rest);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <h3 className="text-lg font-bold text-slate-900">{slot.label}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">✕</button>
+        </div>
+        <div className="grid gap-3">
+          <Stepper label="Sets" value={sets} min={1} step={1} onChange={setSets} />
+          <Stepper label="Reps" value={reps} min={1} step={1} onChange={setReps} />
+          <Stepper label="Rest" value={rest} min={0} step={15} suffix="s" onChange={setRest} />
+        </div>
+        <button
+          disabled={saving}
+          onClick={() => onSave({ sets, reps, rest })}
+          className="mt-5 w-full rounded-xl bg-indigo-600 py-2.5 font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+        >Save</button>
+      </div>
+    </div>
+  );
+}
+
+function Stepper({ label, value, min, step, suffix, onChange }: {
+  label: string;
+  value: number;
+  min: number;
+  step: number;
+  suffix?: string;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3">
+      <span className="text-sm font-semibold text-slate-600">{label}</span>
+      <div className="flex items-center gap-2">
+        <button onClick={() => onChange(Math.max(min, value - step))} className="grid size-9 place-items-center rounded-full bg-slate-100 text-xl font-bold text-slate-600 hover:bg-slate-200">−</button>
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(Math.max(min, parseInt(e.target.value || '0', 10)))}
+          className="w-16 text-center text-2xl font-bold tabular-nums text-slate-900 outline-none"
+        />
+        {suffix && <span className="w-3 text-sm text-slate-400">{suffix}</span>}
+        <button onClick={() => onChange(value + step)} className="grid size-9 place-items-center rounded-full bg-slate-100 text-xl font-bold text-slate-600 hover:bg-slate-200">+</button>
+      </div>
+    </div>
+  );
+}
+
 // Plain number as text; click it to edit inline (commits on blur / Enter).
 function EditableNum({ value, onCommit, width = 'w-8' }: { value: number; onCommit: (n: number) => void; width?: string }) {
   const [editing, setEditing] = useState(false);
@@ -570,11 +643,11 @@ function DropZone({ onDrop }: { onDrop: () => void }) {
   );
 }
 
-function DayCard({ day, recipeId, busy, onUpdateSlot, onRemoveSlot, dragging, onSlotDragStart, onDragEnd, onDropAt }: {
+function DayCard({ day, recipeId, busy, onOpenEditor, onRemoveSlot, dragging, onSlotDragStart, onDragEnd, onDropAt }: {
   day: GenDay;
   recipeId?: string;
   busy: boolean;
-  onUpdateSlot: (weekday: number, index: number, patch: { sets?: number; reps?: number; rest?: number }) => void;
+  onOpenEditor: (weekday: number, index: number) => void;
   onRemoveSlot: (weekday: number, index: number) => void;
   dragging: boolean;
   onSlotDragStart: (weekday: number, index: number) => void;
@@ -604,33 +677,29 @@ function DayCard({ day, recipeId, busy, onUpdateSlot, onRemoveSlot, dragging, on
           {day.slots.map((s, i) => (
             <Fragment key={i}>
               {dragging && <DropZone onDrop={() => onDropAt(day.weekday, i)} />}
-              <li className="flex items-center gap-2 border-b border-slate-50 px-3 py-2 text-sm">
+              <li className="flex items-center gap-2 border-b border-slate-50 pr-3 text-sm hover:bg-indigo-50/40">
                 <span
                   draggable
                   onDragStart={() => onSlotDragStart(day.weekday, i)}
                   onDragEnd={onDragEnd}
-                  className="cursor-move text-slate-300 hover:text-slate-500"
+                  className="cursor-move pl-3 text-slate-300 hover:text-slate-500"
                   title="Drag to move"
                 >⠿</span>
-                {s.group && HAS_MAP.has(s.group) ? (
-                  <img src={`/maps/${s.group}.svg`} alt="" className="size-7 shrink-0 object-contain" />
-                ) : (
-                  <span className="size-7 shrink-0" />
-                )}
-                <span className="flex-1 truncate font-semibold text-slate-800">{s.label}</span>
-                {s.kind === 'muscle' && <span className="text-[10px] font-bold uppercase text-indigo-500">musc</span>}
-                <span className="flex items-center gap-1 text-slate-500">
-                  <EditableNum value={s.sets} onCommit={(n) => onUpdateSlot(day.weekday, i, { sets: n })} width="w-6" />
-                  <span className="text-slate-300">×</span>
-                  <EditableNum value={s.reps} onCommit={(n) => onUpdateSlot(day.weekday, i, { reps: n })} width="w-8" />
-                </span>
-                <span className="flex items-center text-xs text-slate-400">
-                  <EditableNum value={s.rest} onCommit={(n) => onUpdateSlot(day.weekday, i, { rest: n })} width="w-9" />s
-                </span>
+                <button onClick={() => onOpenEditor(day.weekday, i)} className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left">
+                  {s.group && HAS_MAP.has(s.group) ? (
+                    <img src={`/maps/${s.group}.svg`} alt="" className="size-7 shrink-0 object-contain" />
+                  ) : (
+                    <span className="size-7 shrink-0" />
+                  )}
+                  <span className="flex-1 truncate font-semibold text-slate-800">{s.label}</span>
+                  {s.kind === 'muscle' && <span className="text-[10px] font-bold uppercase text-indigo-500">musc</span>}
+                  <span className="tabular-nums text-slate-500">{s.sets} × {s.reps}</span>
+                  <span className="w-11 text-right text-xs tabular-nums text-slate-400">{s.rest}s</span>
+                </button>
                 <button
                   disabled={busy}
                   onClick={() => onRemoveSlot(day.weekday, i)}
-                  className="text-slate-300 hover:text-rose-500 disabled:opacity-40"
+                  className="shrink-0 text-slate-300 hover:text-rose-500 disabled:opacity-40"
                   title="Remove exercise"
                 >
                   <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={1.8}>
