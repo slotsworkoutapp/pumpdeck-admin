@@ -13,10 +13,12 @@ const HAS_MAP = new Set<string>(GROUP_ORDER);
 // The three session lengths the app actually offers — the whole scenario grid.
 const TIMES = [30, 45, 60];
 
-// What's being dragged: a queued variation from the tray, or an existing slot.
-type PendingItem = { key: string; name: string; sets: number; weekday: number };
+// A slot is either a specific variation (movement family) or a whole muscle.
+type SlotKind = 'variation' | 'muscle';
+// `key` is the family key (variation) or the muscle id (muscle).
+type PendingItem = { slotKind: SlotKind; key: string; name: string; group: string | null; sets: number; weekday: number };
 type DragItem =
-  | { kind: 'tray'; key: string; name: string; sets: number }
+  | { kind: 'tray'; slotKind: SlotKind; key: string; sets: number }
   | { kind: 'slot'; weekday: number; index: number };
 
 // Freeze the generated program into the app-facing shape: keep what the app needs
@@ -147,23 +149,24 @@ export default function Preview() {
     if (res.error) { alert(`Couldn't save: ${res.error.message}`); return; }
     reloadLocks();
   }
-  function buildSlot(familyKey: string, sets: number): LockedDay['slots'][number] {
-    const fam = catalog!.familiesByKey.get(familyKey);
+  // Build a slot for a variation (key = family key) or a whole muscle (key = muscle id).
+  function buildSlot(slotKind: SlotKind, key: string, sets: number): LockedDay['slots'][number] {
     const reps = Math.max(3, 10 + (goal?.rep_shift ?? 0));
     const rest = Math.min(180, Math.round((90 * (goal?.rest_multiplier ?? 1)) / 15) * 15);
-    return {
-      familyKey, muscleId: null, sets, reps, rest,
-      muscle: familyMuscle[familyKey], label: fam?.display_name ?? familyKey,
-      group: fam?.muscle_group_raw ?? null, kind: 'variation', slotId: null,
-    };
+    if (slotKind === 'muscle') {
+      const m = catalog!.musclesById.get(key);
+      return { familyKey: null, muscleId: key, sets, reps, rest, muscle: key, label: m?.name ?? key, group: m?.group_raw ?? null, kind: 'muscle', slotId: null };
+    }
+    const fam = catalog!.familiesByKey.get(key);
+    return { familyKey: key, muscleId: null, sets, reps, rest, muscle: familyMuscle[key], label: fam?.display_name ?? key, group: fam?.muscle_group_raw ?? null, kind: 'variation', slotId: null };
   }
-  // Insert a variation into a day at `index` (default: append).
-  async function placeVariation(familyKey: string, sets: number, weekday: number, index?: number) {
+  // Insert a slot into a day at `index` (default: append).
+  async function placeSlot(slotKind: SlotKind, key: string, sets: number, weekday: number, index?: number) {
     if (!active || !goal) return;
     const base = lockedBase();
     const day = base.find((d) => d.weekday === weekday);
     if (!day) return;
-    day.slots.splice(index ?? day.slots.length, 0, buildSlot(familyKey, sets));
+    day.slots.splice(index ?? day.slots.length, 0, buildSlot(slotKind, key, sets));
     await saveLockedDays(base);
   }
   // Move an existing slot to another position/day.
@@ -201,7 +204,7 @@ export default function Preview() {
     setDragItem(null);
     if (!item) return;
     if (item.kind === 'tray') {
-      await placeVariation(item.key, item.sets, weekday, index);
+      await placeSlot(item.slotKind, item.key, item.sets, weekday, index);
       setPending((p) => p.filter((x) => x.key !== item.key));
     } else if (!(item.weekday === weekday && (index === item.index || index === item.index + 1))) {
       await moveSlot(item.weekday, item.index, weekday, index);
@@ -209,8 +212,8 @@ export default function Preview() {
   }
 
   // Waiting-list handlers.
-  const stagePending = (key: string, name: string) =>
-    setPending((p) => (p.some((x) => x.key === key) ? p : [...p, { key, name, sets: 3, weekday: liveProgram[0]?.weekday ?? 2 }]));
+  const stagePending = (slotKind: SlotKind, key: string, name: string, group: string | null) =>
+    setPending((p) => (p.some((x) => x.key === key) ? p : [...p, { slotKind, key, name, group, sets: 3, weekday: liveProgram[0]?.weekday ?? 2 }]));
   const patchPending = (key: string, patch: Partial<PendingItem>) =>
     setPending((p) => p.map((x) => (x.key === key ? { ...x, ...patch } : x)));
   const removePending = (key: string) => setPending((p) => p.filter((x) => x.key !== key));
@@ -312,7 +315,7 @@ export default function Preview() {
               onPatchPending={patchPending}
               onRemovePending={removePending}
               onUpdateSlot={updateSlot}
-              onDragStartTray={(item) => setDragItem({ kind: 'tray', key: item.key, name: item.name, sets: item.sets })}
+              onDragStartTray={(item) => setDragItem({ kind: 'tray', slotKind: item.slotKind, key: item.key, sets: item.sets })}
               onDragEnd={() => setDragItem(null)}
             />
 
@@ -406,11 +409,11 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
   catalog: Catalog;
   busy: boolean;
   pending: PendingItem[];
-  onStage: (key: string, name: string) => void;
+  onStage: (slotKind: SlotKind, key: string, name: string, group: string | null) => void;
   onPatchPending: (key: string, patch: Partial<PendingItem>) => void;
   onRemovePending: (key: string) => void;
   onUpdateSlot: (weekday: number, index: number, patch: { sets?: number }) => void;
-  onDragStartTray: (item: { key: string; name: string; sets: number }) => void;
+  onDragStartTray: (item: { slotKind: SlotKind; key: string; sets: number }) => void;
   onDragEnd: () => void;
 }) {
   const perGroup = perGroupSets(program);
@@ -484,9 +487,18 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
               <div className="mt-0.5 grid gap-0.5 pl-8">
                 {muscles.map((m) => {
                   const ms = perMuscle[m.id] ?? 0;
+                  const muscleStaged = stagedKeys.has(m.id);
                   return (
                     <div key={m.id} className="flex items-baseline gap-2 text-xs">
-                      <span className={`w-24 shrink-0 ${ms === 0 ? 'text-slate-400' : 'text-slate-600'}`}>{m.name} <span className="font-bold tabular-nums">{ms}</span></span>
+                      <span className={`flex w-24 shrink-0 items-baseline gap-1 ${ms === 0 ? 'text-slate-400' : 'text-slate-600'}`}>
+                        <button
+                          disabled={muscleStaged}
+                          onClick={() => onStage('muscle', m.id, m.name, g)}
+                          title={`Add a "${m.name}" muscle slot (resolves at log time)`}
+                          className={muscleStaged ? 'text-indigo-400' : 'text-slate-300 hover:text-indigo-600'}
+                        >{muscleStaged ? '✓' : '+'}</button>
+                        {m.name} <span className="font-bold tabular-nums">{ms}</span>
+                      </span>
                       <div className="flex flex-1 flex-wrap gap-1">
                         {m.families.map((f) => {
                           const fs = perFamily[f.key] ?? 0;
@@ -498,7 +510,11 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
                               <span key={f.key} className="flex items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-slate-600">
                                 {f.name}
                                 {single ? (
-                                  <span className="font-semibold text-slate-900"><EditableNum value={fs} onCommit={(n) => onUpdateSlot(single.weekday, single.index, { sets: n })} width="w-7" /></span>
+                                  <span className="flex items-center overflow-hidden rounded border border-slate-200 text-slate-900">
+                                    <button onClick={() => onUpdateSlot(single.weekday, single.index, { sets: Math.max(1, fs - 1) })} className="px-1 text-slate-400 hover:bg-slate-100">−</button>
+                                    <span className="w-4 text-center font-semibold tabular-nums">{fs}</span>
+                                    <button onClick={() => onUpdateSlot(single.weekday, single.index, { sets: fs + 1 })} className="px-1 text-slate-400 hover:bg-slate-100">+</button>
+                                  </span>
                                 ) : (
                                   <span className="font-semibold tabular-nums text-slate-900">{fs}</span>
                                 )}
@@ -510,7 +526,7 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
                             <button
                               key={f.key}
                               disabled={staged}
-                              onClick={() => onStage(f.key, f.name)}
+                              onClick={() => onStage('variation', f.key, f.name, g)}
                               className={`rounded border border-dashed px-1.5 py-0.5 ${staged ? 'border-indigo-300 bg-indigo-50 text-indigo-500' : 'border-slate-300 text-slate-400 hover:border-indigo-400 hover:text-indigo-600'}`}
                             >{staged ? '✓ ' : '+ '}{f.name}</button>
                           );
@@ -530,12 +546,12 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
           <div className="mb-1.5 text-xs font-bold text-indigo-700">To place ({pending.length}) — drag each onto the day and spot you want</div>
           <div className="grid gap-1.5">
             {pending.map((p) => {
-              const grp = catalog.familiesByKey.get(p.key)?.muscle_group_raw ?? null;
+              const grp = p.group;
               return (
                 <div
                   key={p.key}
                   draggable
-                  onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'tray'); onDragStartTray({ key: p.key, name: p.name, sets: p.sets }); }}
+                  onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'tray'); onDragStartTray({ slotKind: p.slotKind, key: p.key, sets: p.sets }); }}
                   onDragEnd={onDragEnd}
                   className="flex cursor-move items-center gap-2 rounded-lg border border-indigo-200 bg-white px-2 py-2 text-sm shadow-sm"
                 >
@@ -546,6 +562,7 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
                     <span className="size-7 shrink-0" />
                   )}
                   <span className="flex-1 font-semibold text-slate-800">{p.name}</span>
+                  {p.slotKind === 'muscle' && <span className="shrink-0 text-[10px] font-bold uppercase text-indigo-500">muscle</span>}
                   <div className="flex shrink-0 items-center overflow-hidden rounded border border-slate-200">
                     <button onClick={() => onPatchPending(p.key, { sets: Math.max(1, p.sets - 1) })} className="px-1.5 text-slate-500 hover:bg-slate-100">−</button>
                     <span className="w-9 text-center text-xs tabular-nums text-slate-600">{p.sets} ×</span>
