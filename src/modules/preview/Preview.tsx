@@ -417,9 +417,22 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
   const perGroup = perGroupSets(program);
   const totalSets = COVERAGE_GROUPS.reduce((t, g) => t + (perGroup[g] ?? 0), 0);
 
+  const [viewingFamily, setViewingFamily] = useState<{ key: string; name: string } | null>(null);
+
   const familyMuscle = useMemo(() => {
     const m: Record<string, string> = {};
     for (const e of catalog.exercises) if (e.movement_family_key && e.primary_muscle_id && !(e.movement_family_key in m)) m[e.movement_family_key] = e.primary_muscle_id;
+    return m;
+  }, [catalog]);
+
+  // The exercises that belong to each movement family, for the peek card.
+  const exByFamily = useMemo(() => {
+    const m: Record<string, { id: string; name: string; muscle: string | null }[]> = {};
+    for (const e of catalog.exercises) {
+      if (!e.movement_family_key) continue;
+      (m[e.movement_family_key] ??= []).push({ id: e.id, name: e.name, muscle: e.primary_muscle_id ? catalog.musclesById.get(e.primary_muscle_id)?.name ?? null : null });
+    }
+    for (const k of Object.keys(m)) m[k].sort((a, b) => a.name.localeCompare(b.name));
     return m;
   }, [catalog]);
 
@@ -501,7 +514,7 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
                               key={f.key}
                               className={`flex items-center gap-1 rounded border px-1.5 py-0.5 ${fs > 0 ? 'border-slate-200 bg-white text-slate-600' : 'border-dashed border-slate-300 text-slate-400'}`}
                             >
-                              {f.name}
+                              <button onClick={() => setViewingFamily({ key: f.key, name: f.name })} className="hover:text-indigo-600 hover:underline" title="See exercises in this variation">{f.name}</button>
                               {fs > 0 && <span className="font-semibold tabular-nums text-slate-900">{fs}</span>}
                               <button
                                 disabled={staged}
@@ -557,6 +570,31 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {viewingFamily && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setViewingFamily(null)}>
+          <div className="flex max-h-[80vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between border-b border-slate-100 px-4 py-3">
+              <div>
+                <h3 className="font-bold text-slate-900">{viewingFamily.name}</h3>
+                <p className="text-xs text-slate-500">{(exByFamily[viewingFamily.key] ?? []).length} exercises in this variation</p>
+              </div>
+              <button onClick={() => setViewingFamily(null)} className="text-slate-400 hover:text-slate-700">✕</button>
+            </div>
+            <ul className="flex-1 divide-y divide-slate-50 overflow-y-auto">
+              {(exByFamily[viewingFamily.key] ?? []).map((e) => (
+                <li key={e.id} className="flex items-center justify-between px-4 py-2 text-sm">
+                  <span className="font-semibold text-slate-800">{e.name}</span>
+                  {e.muscle && <span className="text-xs text-slate-400">{e.muscle}</span>}
+                </li>
+              ))}
+              {(exByFamily[viewingFamily.key] ?? []).length === 0 && (
+                <li className="px-4 py-3 text-sm text-slate-400">No exercises tagged into this variation yet.</li>
+              )}
+            </ul>
           </div>
         </div>
       )}
