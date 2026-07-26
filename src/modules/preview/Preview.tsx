@@ -560,9 +560,6 @@ function DayCard({ day, recipeId, onEditSlot }: { day: GenDay; recipeId?: string
               <span className="w-12 text-right tabular-nums text-xs text-slate-400">{s.rest}s</span>
             </li>
           ))}
-          {day.dropped > 0 && (
-            <li className="px-4 py-1.5 text-xs text-slate-400">+{day.dropped} more trimmed to fit the time</li>
-          )}
         </ul>
       )}
     </div>
