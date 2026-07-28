@@ -22,10 +22,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => setSession(data.session))
+      .catch((e) => console.error('getSession failed:', e))
+      .finally(() => setLoading(false)); // never hang on "Loading…"
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
     });
@@ -39,9 +40,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAdmin(null);
       return;
     }
-    supabase.rpc('is_admin_me').then(({ data, error }) => {
-      setIsAdmin(error ? false : Boolean(data));
-    });
+    let cancelled = false;
+    (async () => {
+      try {
+        // Race the check against a timeout so a stalled request can never leave
+        // the gate stuck on "Checking access…" forever.
+        const result = await Promise.race([
+          supabase.rpc('is_admin_me'),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('is_admin_me timed out')), 10000)
+          ),
+        ]);
+        if (cancelled) return;
+        const { data, error } = result;
+        if (error) throw error;
+        setIsAdmin(Boolean(data));
+      } catch (e) {
+        if (cancelled) return;
+        console.error('Admin check failed:', e);
+        // A rejected check usually means the stored token is expired/revoked.
+        // Verify against the server; if the session is truly dead, sign out so
+        // the user lands on Sign in and can re-auth instead of hanging.
+        try {
+          const { data: u } = await supabase.auth.getUser();
+          if (!u?.user) await supabase.auth.signOut();
+        } catch {
+          /* getUser itself failed — fall through to not-admin */
+        }
+        if (!cancelled) setIsAdmin(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [session]);
 
   const signOut = async () => {
