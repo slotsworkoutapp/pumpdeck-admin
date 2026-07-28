@@ -152,14 +152,18 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
     byKey.get(k)!.push(a);
   }
   // Within each key: the PRIMARY lift (lowest recipe sort — the compound) always
-  // leads and repeats every session; only the ACCESSORY slots rotate for
-  // variation coverage (prefer a variation not yet used this week).
+  // leads and repeats every session. After that, HIGHER-priority slots come first
+  // so lower-priority ones land in later rounds and are the first to trim when the
+  // session is short on time (e.g. the medial triceps head, marked Low, drops
+  // before the long/lateral heads). Ties fall back to fresh-variation coverage
+  // (prefer a variation not yet used this week), then recipe order.
   for (const list of byKey.values()) {
     const minSort = Math.min(...list.map((a) => a.src.sort_order));
     list.sort((a, b) => {
       const pa = a.src.sort_order === minSort ? 0 : 1;
       const pb = b.src.sort_order === minSort ? 0 : 1;
       if (pa !== pb) return pa - pb;
+      if (a.src.priority !== b.src.priority) return b.src.priority - a.src.priority;
       const ua = usedVariations.has(a.src.family_key ?? '') ? 1 : 0;
       const ub = usedVariations.has(b.src.family_key ?? '') ? 1 : 0;
       return ua !== ub ? ua - ub : a.src.sort_order - b.src.sort_order;

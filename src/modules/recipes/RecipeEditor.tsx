@@ -7,7 +7,10 @@ import { GroupMap } from '../../components/GroupMap';
 
 const blankSlot = (order: number): ContentSlot => ({
   sort_order: order,
-  slot_kind: 'variation',
+  // Muscle is the default primitive — a slot targets a muscle (usually a head like
+  // Upper Chest), and the lifter picks the exercise. Switch to Variation only when
+  // you want to pin a specific movement pattern (e.g. vertical pull vs. row).
+  slot_kind: 'muscle',
   family_key: null,
   muscle_id: null,
   base_sets: 3,
@@ -214,7 +217,7 @@ export default function RecipeEditor() {
               </div>
               <GroupMap group={slotGroup(s)} className="size-8 shrink-0 object-contain" />
               <div className="w-28">
-                <SelectField value={s.slot_kind} onChange={(v) => setSlot(i, { slot_kind: v as ContentSlot['slot_kind'] })} options={[{ value: 'variation', label: 'Variation' }, { value: 'muscle', label: 'Muscle' }]} />
+                <SelectField value={s.slot_kind} onChange={(v) => setSlot(i, { slot_kind: v as ContentSlot['slot_kind'] })} options={[{ value: 'muscle', label: 'Muscle' }, { value: 'variation', label: 'Variation' }]} />
               </div>
               <div className="flex-1">
                 {s.slot_kind === 'variation' ? (
@@ -231,6 +234,19 @@ export default function RecipeEditor() {
               <span>–</span>
               <Num label="" value={s.rep_high} onChange={(v) => setSlot(i, { rep_high: v })} />
               <Num label="rest(s)" value={s.rest_seconds} onChange={(v) => setSlot(i, { rest_seconds: v })} />
+              <label className="flex items-center gap-1">
+                <span className="text-slate-400">priority</span>
+                <select
+                  value={String(s.priority)}
+                  onChange={(e) => setSlot(i, { priority: Number(e.target.value) })}
+                  className="rounded border border-slate-300 bg-white px-1 py-0.5 text-xs text-slate-700"
+                  title="Lower-priority slots are trimmed first when the session is short on time (e.g. de-emphasize the medial triceps head)."
+                >
+                  <option value="3">High</option>
+                  <option value="2">Normal</option>
+                  <option value="1">Low</option>
+                </select>
+              </label>
             </div>
           </div>
         ))}
