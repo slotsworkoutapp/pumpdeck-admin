@@ -178,32 +178,23 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
     }
   }
 
-  // Fill the time budget in that round-robin order. When the next exercise doesn't
-  // fully fit, don't drop it whole — trim its SETS to fill the remaining time, so
-  // the session lands close to the requested length. Longer rests eat more budget.
+  // Fill the time budget in that round-robin order, keeping every exercise at its
+  // FULL set count — we trim whole exercises to fit time, never shave sets. But a
+  // short session still needs enough movements, so guarantee a floor of ~1
+  // exercise per 7.5 min (30 min → 4, 45 → 6, 60 → 8): once the budget is full we
+  // keep adding the next exercises until that floor is met, accepting a small
+  // overshoot rather than leaving a 2–3 exercise day.
+  const minExercises = Math.max(1, Math.round(budgetMinutes / 7.5));
   const chosenSets = new Map<ContentSlot, number>();
   let used = 0;
   for (const a of sequence) {
-    if (used + a.mins <= budgetMinutes) {
+    const fits = used + a.mins <= budgetMinutes;
+    if (fits || chosenSets.size < minExercises) {
       chosenSets.set(a.src, a.sets);
       used += a.mins;
-      continue;
+    } else {
+      break; // budget full and the exercise floor is met
     }
-    // Doesn't fully fit. Trim its sets toward the time that's left, but never below
-    // 2 working sets — and prefer landing slightly OVER the budget to stopping well
-    // under it. (At 30 min strength, 2 exercises ≈ 25 m; a 3rd tips to ~33 m — which
-    // is a better session than a near-empty day.) Include only when the resulting
-    // overshoot is no bigger than the shortfall we'd otherwise leave.
-    const perSet = SET_WORK_SECONDS + a.rest;
-    const remainingSec = (budgetMinutes - used) * 60 - EXERCISE_OVERHEAD_SECONDS;
-    const fitSets = Math.floor(remainingSec / perSet);
-    const useSets = Math.min(a.sets, Math.max(2, fitSets));
-    const usedWith = used + slotMinutes(useSets, a.rest);
-    if (useSets >= 2 && budgetMinutes - used >= usedWith - budgetMinutes) {
-      chosenSets.set(a.src, useSets);
-      used = usedWith;
-    }
-    break; // budget essentially full
   }
   // Display in workout-flow order: big muscles → shoulders → arms → core.
   const kept = adjusted.filter((a) => chosenSets.has(a.src)).sort((x, y) => {
