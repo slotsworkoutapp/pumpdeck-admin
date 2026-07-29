@@ -11,8 +11,8 @@ export default function Shell() {
     <div className="flex h-screen overflow-hidden bg-slate-100 text-slate-900">
       <aside className={`flex ${collapsed ? 'w-14' : 'w-56'} flex-col border-r border-slate-200 bg-white transition-all`}>
         <div className={`flex items-center py-4 ${collapsed ? 'justify-center px-0' : 'gap-2 px-4'}`}>
-          <img src="/logo.svg" alt="PumpDeck" className="size-8 shrink-0 rounded-lg" />
-          {!collapsed && <span className="flex-1 font-bold">PumpDeck Admin</span>}
+          <img src="/logo.svg" alt="Slots" className="size-8 shrink-0 rounded-lg" />
+          {!collapsed && <span className="flex-1 font-bold">Slots Admin</span>}
           <button
             onClick={() => setCollapsed((c) => !c)}
             className={`text-slate-400 hover:text-slate-700 ${collapsed ? 'hidden' : ''}`}

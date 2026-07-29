@@ -27,7 +27,7 @@ export default function SignIn({ notAdmin }: { notAdmin?: boolean }) {
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
         <div className="mb-4 flex items-center gap-2">
           <span className="grid size-8 place-items-center rounded-lg bg-slate-900 text-sm font-black text-white">P</span>
-          <span className="font-bold">PumpDeck Admin</span>
+          <span className="font-bold">Slots Admin</span>
         </div>
 
         {notAdmin ? (
