@@ -61,18 +61,38 @@ export default function Preview() {
   const [editingSlot, setEditingSlot] = useState<{ weekday: number; index: number } | null>(null);
   // Which generator drives the preview: the current recipe-based one, or the new
   // metadata-driven allocator (beta). Allocator ignores saved/custom edits.
-  const [engine, setEngine] = useState<'recipes' | 'allocator'>('recipes');
+  const [engine, setEngine] = useState<'recipes' | 'allocator'>(
+    () => (localStorage.getItem('pd_preview_engine') === 'allocator' ? 'allocator' : 'recipes')
+  );
+  useEffect(() => { localStorage.setItem('pd_preview_engine', engine); }, [engine]);
   const [scenariosOpen, setScenariosOpen] = useState(() => localStorage.getItem('pd_scenarios_open') !== '0');
   useEffect(() => { localStorage.setItem('pd_scenarios_open', scenariosOpen ? '1' : '0'); }, [scenariosOpen]);
 
   const lockedMap = locks ?? {};
 
-  // Seed the active scenario once data lands.
+  // Seed the active scenario once data lands — restore the last one viewed if it's
+  // still valid, otherwise a sensible default.
   useEffect(() => {
-    if (!active && splits?.length && goals?.length) {
-      setActive({ splitKey: splits[0].key, minutes: 60, goalKey: goals[0].goal_key });
-    }
+    if (active || !splits?.length || !goals?.length) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem('pd_preview_active') || 'null');
+      if (
+        saved &&
+        typeof saved.minutes === 'number' &&
+        splits.some((s) => s.key === saved.splitKey) &&
+        goals.some((g) => g.goal_key === saved.goalKey)
+      ) {
+        setActive(saved);
+        return;
+      }
+    } catch { /* ignore bad/absent value */ }
+    setActive({ splitKey: splits[0].key, minutes: 60, goalKey: goals[0].goal_key });
   }, [active, splits, goals]);
+
+  // Remember the last-viewed scenario across reloads.
+  useEffect(() => {
+    if (active) localStorage.setItem('pd_preview_active', JSON.stringify(active));
+  }, [active]);
 
   // Clear the waiting list + any drag/edit when the scenario changes.
   useEffect(() => { setPending([]); setDragItem(null); setEditingSlot(null); }, [active?.splitKey, active?.minutes, active?.goalKey]);
