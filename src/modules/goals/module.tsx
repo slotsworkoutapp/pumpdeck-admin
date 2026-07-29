@@ -8,6 +8,7 @@ export const goalsModule: AdminModule = {
   icon: <TargetIcon />,
   routes: [
     { element: <GoalsList /> },
+    { path: 'new', element: <GoalEditor /> },
     { path: ':key', element: <GoalEditor /> },
   ],
 };

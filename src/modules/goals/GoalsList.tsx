@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useGoals } from '../../lib/content';
 
 export default function GoalsList() {
@@ -10,9 +10,14 @@ export default function GoalsList() {
 
   return (
     <div className="p-6">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-slate-900">Goals</h1>
-        <p className="text-sm text-slate-500">How a goal restyles a recipe — rep range, rest, and volume shifts applied to every slot.</p>
+      <div className="mb-4 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Goals</h1>
+          <p className="text-sm text-slate-500">How a goal restyles a recipe — rep range, rest, and volume shifts applied to every slot.</p>
+        </div>
+        <Link to="/goals/new" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:opacity-90">
+          + New goal
+        </Link>
       </div>
       <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
