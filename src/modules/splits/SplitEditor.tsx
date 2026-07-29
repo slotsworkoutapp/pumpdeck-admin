@@ -84,6 +84,15 @@ export default function SplitEditor() {
     else nav('/splits');
   }
 
+  async function del() {
+    if (!confirm(`Delete split "${displayName}"? This can't be undone.`)) return;
+    setSaving(true);
+    const { error } = await supabase.from('content_split_templates').delete().eq('key', key);
+    setSaving(false);
+    if (error) setError(error.message);
+    else nav('/splits');
+  }
+
   if (loading) return <div className="p-8 text-slate-400">Loading…</div>;
 
   return (
@@ -182,7 +191,7 @@ export default function SplitEditor() {
         <Toggle checked={enabled} onChange={setEnabled} label="Enabled" />
       </div>
 
-      <SaveBar onSave={save} onCancel={() => nav('/splits')} saving={saving} error={error} />
+      <SaveBar onSave={save} onCancel={() => nav('/splits')} onDelete={isNew ? undefined : del} saving={saving} error={error} />
     </div>
   );
 }
