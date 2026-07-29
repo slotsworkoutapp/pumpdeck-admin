@@ -10,6 +10,9 @@ import { GROUP_ORDER } from '../../lib/bodymap';
 import { COVERAGE_GROUPS, GROUP_LABEL, perGroupSets, groupTarget, coverageStatus, statusChip } from '../../lib/coverage';
 
 const HAS_MAP = new Set<string>(GROUP_ORDER);
+// Groups you can slot as a WHOLE group ("Biceps" = pick any biceps exercise).
+// Only the interchangeable ones — legs/back/shoulders are too broad.
+const INTERCHANGEABLE_GROUPS = new Set(['chest', 'biceps', 'triceps', 'core', 'forearms']);
 // The three session lengths the app actually offers — the whole scenario grid.
 const TIMES = [30, 45, 60];
 
@@ -538,6 +541,18 @@ function CoverageStrip({ program, catalog, busy, pending, onStage, onPatchPendin
                   <span className="text-sm font-semibold text-slate-700">{GROUP_LABEL[g]}</span>
                 </div>
                 <span className={`shrink-0 rounded px-1.5 py-0.5 text-sm font-bold tabular-nums ${untrained ? 'text-slate-400' : statusChip(status)}`}>{n}/{target}</span>
+                {INTERCHANGEABLE_GROUPS.has(g) && (() => {
+                  const gk = `group.${g}`;
+                  const gStaged = stagedKeys.has(gk);
+                  return (
+                    <button
+                      disabled={gStaged}
+                      onClick={() => onStage('variation', gk, GROUP_LABEL[g], g)}
+                      title={`Add a whole-${GROUP_LABEL[g]} slot — pick any ${GROUP_LABEL[g]} exercise at log time`}
+                      className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${gStaged ? 'border-indigo-200 text-indigo-400' : 'border-dashed border-slate-300 text-slate-500 hover:border-indigo-400 hover:text-indigo-600'}`}
+                    >{gStaged ? '✓ ' : '+ '}{GROUP_LABEL[g]}</button>
+                  );
+                })()}
               </div>
               <div className="mt-0.5 grid gap-0.5 pl-8">
                 {muscles.map((m) => {

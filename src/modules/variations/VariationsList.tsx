@@ -18,12 +18,15 @@ export default function VariationsList() {
   if (error) return <div className="p-8 text-red-600">Failed to load: {error}</div>;
   if (!catalog) return null;
 
+  // Hide the virtual "group.<x>" families — they're group slots, not real movement families.
+  const families = catalog.families.filter((f) => !f.key.startsWith('group.'));
+
   return (
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Variations</h1>
-          <p className="text-sm text-slate-500">{catalog.families.length} movement families</p>
+          <p className="text-sm text-slate-500">{families.length} movement families</p>
         </div>
         <Link to="/variations/new" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:opacity-90">
           + New variation
@@ -41,7 +44,7 @@ export default function VariationsList() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {catalog.families.map((f) => {
+            {families.map((f) => {
               const n = memberCount.get(f.key) ?? 0;
               return (
                 <tr key={f.key} className="cursor-pointer hover:bg-slate-50" onClick={() => nav(`/variations/${f.key}`)}>
