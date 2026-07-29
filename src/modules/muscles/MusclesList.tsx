@@ -8,15 +8,29 @@ export default function MusclesList() {
   const { catalog, error, loading } = useCatalog();
   const nav = useNavigate();
 
-  // Count how many exercises target each muscle (primary or secondary).
+  // Count how many exercises target each muscle as a PRIMARY — i.e. the pool
+  // that would fill this muscle's slot. (Secondary hits are excluded on purpose;
+  // counting them makes Front Delt read as 36 because it's a secondary on every
+  // press, which isn't the slot's real pick list.)
   const targetCount = useMemo(() => {
     const c = new Map<string, number>();
     for (const e of catalog?.exercises ?? []) {
-      const ids = [e.primary_muscle_id, ...e.secondary_muscle_ids].filter(Boolean) as string[];
+      const ids = [e.primary_muscle_id, ...e.additional_primary_muscle_ids].filter(Boolean) as string[];
       for (const id of new Set(ids)) c.set(id, (c.get(id) ?? 0) + 1);
     }
     return c;
   }, [catalog]);
+
+  // Real trainable muscles first (by sort order), focus muscles pinned to the bottom.
+  const orderedMuscles = useMemo(
+    () =>
+      [...(catalog?.muscles ?? [])].sort(
+        (a, b) =>
+          (a.group_raw === 'focus' ? 1 : 0) - (b.group_raw === 'focus' ? 1 : 0) ||
+          a.sort_order - b.sort_order
+      ),
+    [catalog]
+  );
 
   if (loading) return <div className="p-8 text-slate-400">Loading…</div>;
   if (error) return <div className="p-8 text-red-600">Failed to load: {error}</div>;
@@ -44,11 +58,11 @@ export default function MusclesList() {
               <th className="px-4 py-2 font-semibold" title="min / preferred / max times per week">Freq</th>
               <th className="px-4 py-2 font-semibold">Kind</th>
               <th className="px-4 py-2 font-semibold">Coverage</th>
-              <th className="px-4 py-2 font-semibold">Exercises</th>
+              <th className="px-4 py-2 font-semibold" title="Exercises that target this muscle as a primary — its slot's pick list.">Options</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {catalog.muscles.map((m) => (
+            {orderedMuscles.map((m) => (
               <tr key={m.id} className="cursor-pointer hover:bg-slate-50" onClick={() => nav(`/muscles/${m.id}`)}>
                 <td className="px-4 py-2 font-semibold text-slate-900">
                   {m.name}
