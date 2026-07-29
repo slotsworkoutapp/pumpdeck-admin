@@ -5,7 +5,7 @@ import {
   saveProgram, unlockProgram, lockId,
   type Catalog, type ContentGoal, type ContentSplit, type LockedDay,
 } from '../../lib/content';
-import { generateProgram, weekdayLabel, type GenDay } from '../../lib/generate';
+import { generateProgram, slotMinutes, weekdayLabel, type GenDay } from '../../lib/generate';
 import { GROUP_ORDER } from '../../lib/bodymap';
 import { COVERAGE_GROUPS, GROUP_LABEL, perGroupSets, groupTarget, coverageStatus, statusChip } from '../../lib/coverage';
 
@@ -719,6 +719,9 @@ function DayCard({ day, recipeId, busy, onOpenEditor, onRemoveSlot, dragging, on
   onDropAt: (weekday: number, index: number) => void;
 }) {
   const totalSets = day.slots.reduce((n, s) => n + s.sets, 0);
+  // Recompute the estimate from the CURRENT slots (sets + rest) rather than the
+  // frozen value captured at generation time, so edits update the time live.
+  const estMin = Math.round(day.slots.reduce((t, s) => t + slotMinutes(s.sets, s.rest), 0));
   return (
     <div className={`rounded-xl border bg-white ${dragging ? 'border-indigo-200' : 'border-slate-200'}`}>
       <div className="flex items-baseline justify-between border-b border-slate-100 px-4 py-2">
@@ -726,7 +729,7 @@ function DayCard({ day, recipeId, busy, onOpenEditor, onRemoveSlot, dragging, on
           <span className="text-slate-400">{weekdayLabel(day.weekday)}</span> {day.dayName}
         </span>
         <div className="flex items-baseline gap-2">
-          {day.slots.length > 0 && <span className="text-xs font-semibold text-slate-400">{day.slots.length} ex · {totalSets} sets · ~{day.estMinutes}m</span>}
+          {day.slots.length > 0 && <span className="text-xs font-semibold text-slate-400">{day.slots.length} ex · {totalSets} sets · ~{estMin}m</span>}
           {recipeId && <Link to={`/recipes/${recipeId}`} className="text-xs font-semibold text-indigo-500 hover:underline">recipe</Link>}
         </div>
       </div>
