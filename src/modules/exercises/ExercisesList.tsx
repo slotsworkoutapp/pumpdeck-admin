@@ -1,17 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { useCatalog, kindLabel, type ContentExercise } from '../../lib/content';
+import { useCatalog } from '../../lib/content';
 import { validateCatalog } from './validate';
-import ExerciseTree, { Thumb } from './ExerciseTree';
+import ExerciseTree from './ExerciseTree';
 import { GROUP_ORDER, GROUP_COLORS } from '../../lib/bodymap';
 
 export default function ExercisesList() {
   const { catalog, error, loading } = useCatalog();
   const nav = useNavigate();
-  const [q, setQ] = useState('');
   const [showIssues, setShowIssues] = useState(false);
-  const [view, setView] = useState<'tree' | 'table'>('tree');
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [posters, setPosters] = useState<Map<string, string>>(new Map());
 
@@ -35,22 +33,6 @@ export default function ExercisesList() {
   const issues = useMemo(() => (catalog ? validateCatalog(catalog) : []), [catalog]);
   const errorCount = issues.filter((i) => i.severity === 'error').length;
 
-  const rows = useMemo(() => {
-    if (!catalog) return [];
-    const needle = q.trim().toLowerCase();
-    return catalog.exercises
-      .filter((e) => !needle || e.name.toLowerCase().includes(needle))
-      .map((e) => ({
-        e,
-        primary: e.primary_muscle_id ? catalog.musclesById.get(e.primary_muscle_id)?.name ?? '—' : '—',
-        family: e.movement_family_key ? catalog.familiesByKey.get(e.movement_family_key)?.display_name ?? e.movement_family_key : '—',
-        secondary: e.secondary_muscle_ids
-          .map((id) => catalog.musclesById.get(id)?.name)
-          .filter(Boolean)
-          .join(', '),
-      }));
-  }, [catalog, q]);
-
   if (loading) return <div className="p-8 text-slate-400">Loading catalog…</div>;
   if (error) return <div className="p-8 text-red-600">Failed to load: {error}</div>;
   if (!catalog) return null;
@@ -66,17 +48,6 @@ export default function ExercisesList() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-lg bg-slate-100 p-0.5 text-sm font-semibold">
-            {(['tree', 'table'] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={`rounded-md px-3 py-1.5 capitalize ${view === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
           <button
             onClick={() => setShowIssues((v) => !v)}
             className={`rounded-lg px-3 py-2 text-sm font-semibold ${
@@ -127,10 +98,8 @@ export default function ExercisesList() {
         </div>
       )}
 
-      {view === 'tree' ? (
-        <>
-          <div className="mb-4 flex flex-wrap gap-2">
-            {[...GROUP_ORDER, 'focus'].map((g) => {
+      <div className="mb-4 flex flex-wrap gap-2">
+        {[...GROUP_ORDER, 'focus'].map((g) => {
               const active = groupFilter === g;
               const color = GROUP_COLORS[g] ?? '#8B5CF6';
               return (
@@ -160,58 +129,6 @@ export default function ExercisesList() {
             onOpenMuscle={(id) => nav(`/muscles/${id}`)}
             onOpenVariation={(key) => nav(`/variations/${key}`)}
           />
-        </>
-      ) : (
-        <>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search exercises…"
-            className="mb-4 w-full max-w-sm rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
-          />
-          <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
-            <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-2 font-semibold">Name</th>
-              <th className="px-4 py-2 font-semibold">Type</th>
-              <th className="px-4 py-2 font-semibold">Primary</th>
-              <th className="px-4 py-2 font-semibold">Variation</th>
-              <th className="px-4 py-2 font-semibold">Secondary</th>
-              <th className="px-4 py-2 font-semibold">Rest</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map(({ e, primary, family, secondary }) => (
-              <Row key={e.id} e={e} primary={primary} family={family} secondary={secondary} poster={posters.get(e.id)} onOpen={() => nav(`/exercises/${e.id}`)} />
-            ))}
-          </tbody>
-            </table>
-          </div>
-        </>
-      )}
     </div>
-  );
-}
-
-function Row({ e, primary, family, secondary, poster, onOpen }: { e: ContentExercise; primary: string; family: string; secondary: string; poster?: string; onOpen: () => void }) {
-  return (
-    <tr className="cursor-pointer hover:bg-slate-50" onClick={onOpen}>
-      <td className="px-4 py-2 font-semibold text-slate-900">
-        <div className="flex items-center gap-2">
-          <Thumb url={poster} />
-          <span>{e.name}</span>
-          {!e.enabled && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">off</span>}
-        </div>
-      </td>
-      <td className="px-4 py-2 text-slate-500">
-        {e.type_raw}
-        {e.kind_raw !== 'normal' ? ` · ${kindLabel(e.kind_raw)}` : ''}
-      </td>
-      <td className="px-4 py-2 text-slate-700">{primary}</td>
-      <td className="px-4 py-2 text-slate-500">{family}</td>
-      <td className="px-4 py-2 text-slate-400">{secondary || '—'}</td>
-      <td className="px-4 py-2 tabular-nums text-slate-500">{e.default_rest_seconds}s</td>
-    </tr>
   );
 }
