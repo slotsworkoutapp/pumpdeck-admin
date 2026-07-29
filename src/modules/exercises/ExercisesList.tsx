@@ -130,19 +130,24 @@ export default function ExercisesList() {
       {view === 'tree' ? (
         <>
           <div className="mb-4 flex flex-wrap gap-2">
-            {GROUP_ORDER.map((g) => {
+            {[...GROUP_ORDER, 'focus'].map((g) => {
               const active = groupFilter === g;
+              const color = GROUP_COLORS[g] ?? '#8B5CF6';
               return (
                 <button
                   key={g}
                   onClick={() => setGroupFilter(active ? null : g)}
-                  style={active ? { borderColor: GROUP_COLORS[g], backgroundColor: `${GROUP_COLORS[g]}12` } : undefined}
+                  style={active ? { borderColor: color, backgroundColor: `${color}12` } : undefined}
                   className={`flex w-20 flex-col items-center rounded-xl border px-2 py-2 transition ${
                     active ? '' : 'border-slate-200 bg-white opacity-70 hover:opacity-100'
                   }`}
                 >
-                  <img src={`/maps/${g}.svg`} alt="" className="h-14 w-full object-contain" />
-                  <span className="mt-1 text-xs font-semibold capitalize" style={active ? { color: GROUP_COLORS[g] } : { color: '#475569' }}>{g}</span>
+                  {g === 'focus' ? (
+                    <div className="flex h-14 w-full items-center justify-center text-3xl">✨</div>
+                  ) : (
+                    <img src={`/maps/${g}.svg`} alt="" className="h-14 w-full object-contain" />
+                  )}
+                  <span className="mt-1 text-xs font-semibold capitalize" style={active ? { color } : { color: '#475569' }}>{g}</span>
                 </button>
               );
             })}
