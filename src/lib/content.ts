@@ -17,6 +17,15 @@ export interface ContentMuscle {
   color_hex: string | null;
   icon_name: string | null;
   enabled: boolean;
+  // Generation ("coaching") metadata — drives the program allocator. See
+  // migration 0132. gen_tier null = not programmed (focus muscles).
+  gen_tier: number | null;
+  gen_freq_min: number;
+  gen_freq_pref: number;
+  gen_freq_max: number;
+  gen_kind: string | null;      // 'compound' | 'isolation'
+  gen_coverage: string | null;  // 'direct' | 'indirect'
+  gen_covered_by: string[];
 }
 
 export interface ContentFamily {

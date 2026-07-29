@@ -6,7 +6,8 @@ export const musclesModule: AdminModule = {
   id: 'muscles',
   label: 'Muscles',
   icon: <AnatomyIcon />,
-  hidden: true, // reached by clicking a muscle in the Exercises tree
+  // Visible in the sidebar: this is where the program-generation coaching logic
+  // (tier, frequency, coverage) is edited, alongside the muscle catalog.
   routes: [
     { element: <MusclesList /> },
     { path: 'new', element: <MuscleEditor /> },

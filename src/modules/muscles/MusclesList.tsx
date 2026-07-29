@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useCatalog } from '../../lib/content';
 
+const TIER_LABEL: Record<number, string> = { 5: '5 · Critical', 4: '4 · High', 3: '3 · Medium', 2: '2 · Low', 1: '1 · Spec' };
+
 export default function MusclesList() {
   const { catalog, error, loading } = useCatalog();
   const nav = useNavigate();
@@ -38,9 +40,11 @@ export default function MusclesList() {
             <tr>
               <th className="px-4 py-2 font-semibold">Name</th>
               <th className="px-4 py-2 font-semibold">Group</th>
-              <th className="px-4 py-2 font-semibold">Body map</th>
+              <th className="px-4 py-2 font-semibold">Tier</th>
+              <th className="px-4 py-2 font-semibold" title="min / preferred / max times per week">Freq</th>
+              <th className="px-4 py-2 font-semibold">Kind</th>
+              <th className="px-4 py-2 font-semibold">Coverage</th>
               <th className="px-4 py-2 font-semibold">Exercises</th>
-              <th className="px-4 py-2 font-semibold">Description</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -51,9 +55,15 @@ export default function MusclesList() {
                   {!m.enabled && <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">off</span>}
                 </td>
                 <td className="px-4 py-2 text-slate-500">{m.group_raw}</td>
-                <td className="px-4 py-2 text-slate-400">{m.body_map_id ?? '—'}</td>
+                <td className="px-4 py-2">{m.gen_tier == null ? <span className="text-slate-300">—</span> : <span className="font-semibold text-slate-700">{TIER_LABEL[m.gen_tier] ?? m.gen_tier}</span>}</td>
+                <td className="px-4 py-2 tabular-nums text-slate-500">{m.gen_tier == null ? '—' : `${m.gen_freq_min}/${m.gen_freq_pref}/${m.gen_freq_max}`}</td>
+                <td className="px-4 py-2 text-slate-500">{m.gen_kind ?? '—'}{m.gen_coverage === 'indirect' && ''}</td>
+                <td className="px-4 py-2 text-slate-500">
+                  {m.gen_coverage === 'indirect'
+                    ? <span title={m.gen_covered_by.join(', ')} className="text-amber-600">indirect</span>
+                    : m.gen_tier == null ? '—' : <span className="text-slate-400">direct</span>}
+                </td>
                 <td className="px-4 py-2 tabular-nums text-slate-500">{targetCount.get(m.id) ?? 0}</td>
-                <td className="max-w-xs truncate px-4 py-2 text-slate-400">{m.description ?? '—'}</td>
               </tr>
             ))}
           </tbody>
