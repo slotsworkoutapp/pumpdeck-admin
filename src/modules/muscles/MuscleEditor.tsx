@@ -17,13 +17,6 @@ const blank: Omit<ContentMuscle, 'id'> = {
   color_hex: null,
   icon_name: null,
   enabled: true,
-  gen_tier: 3,
-  gen_freq_min: 0,
-  gen_freq_pref: 1,
-  gen_freq_max: 2,
-  gen_kind: 'isolation',
-  gen_coverage: 'direct',
-  gen_covered_by: [],
 };
 
 export default function MuscleEditor() {
@@ -110,61 +103,6 @@ export default function MuscleEditor() {
           </div>
         )}
 
-        {/* Program-generation ("coaching") metadata — what the allocator runs on. */}
-        {!isFocus && (
-          <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div className="text-sm font-semibold text-slate-700">Program generation</div>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Priority tier" hint="Fill order when slots are scarce.">
-                <SelectField
-                  value={form.gen_tier == null ? '' : String(form.gen_tier)}
-                  onChange={(v) => set('gen_tier', v === '' ? null : parseInt(v, 10))}
-                  options={[
-                    { value: '5', label: '5 · Critical' },
-                    { value: '4', label: '4 · High' },
-                    { value: '3', label: '3 · Medium' },
-                    { value: '2', label: '2 · Low' },
-                    { value: '1', label: '1 · Specialization' },
-                    { value: '', label: '— not programmed —' },
-                  ]}
-                />
-              </Field>
-              <Field label="Movement kind" hint="Compounds go heavy + first; only they take the strength rep-shift.">
-                <SelectField
-                  value={form.gen_kind ?? 'isolation'}
-                  onChange={(v) => set('gen_kind', v)}
-                  options={[{ value: 'compound', label: 'Compound' }, { value: 'isolation', label: 'Isolation' }]}
-                />
-              </Field>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <Field label="Freq · min" hint="times/week if space allows">
-                <NumberField value={form.gen_freq_min} onChange={(e) => set('gen_freq_min', parseInt(e.target.value || '0', 10))} />
-              </Field>
-              <Field label="Freq · preferred">
-                <NumberField value={form.gen_freq_pref} onChange={(e) => set('gen_freq_pref', parseInt(e.target.value || '0', 10))} />
-              </Field>
-              <Field label="Freq · max">
-                <NumberField value={form.gen_freq_max} onChange={(e) => set('gen_freq_max', parseInt(e.target.value || '0', 10))} />
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Coverage" hint="Indirect = trained by its coverers; skipped when they're already on the day.">
-                <SelectField
-                  value={form.gen_coverage ?? 'direct'}
-                  onChange={(v) => set('gen_coverage', v)}
-                  options={[{ value: 'direct', label: 'Direct' }, { value: 'indirect', label: 'Indirect' }]}
-                />
-              </Field>
-              <Field label="Covered by" hint="Comma-separated muscle names, e.g. Mid Chest, Upper Chest.">
-                <TextField
-                  value={form.gen_covered_by.join(', ')}
-                  onChange={(e) => set('gen_covered_by', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
-                />
-              </Field>
-            </div>
-          </div>
-        )}
         <Toggle checked={form.enabled} onChange={(v) => set('enabled', v)} label="Enabled" />
       </div>
       <SaveBar onSave={save} onCancel={() => nav('/exercises')} onDelete={isNew ? undefined : del} saving={saving} error={error} />

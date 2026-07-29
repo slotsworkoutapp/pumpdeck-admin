@@ -6,7 +6,6 @@ import {
   type Catalog, type ContentGoal, type ContentSplit, type LockedDay,
 } from '../../lib/content';
 import { generateProgram, slotMinutes, weekdayLabel, type GenDay } from '../../lib/generate';
-import { allocateProgram } from '../../lib/allocate';
 import { GROUP_ORDER } from '../../lib/bodymap';
 import { COVERAGE_GROUPS, GROUP_LABEL, perGroupSets, groupTarget, coverageStatus, statusChip } from '../../lib/coverage';
 
@@ -59,12 +58,6 @@ export default function Preview() {
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [dragItem, setDragItem] = useState<DragItem | null>(null);
   const [editingSlot, setEditingSlot] = useState<{ weekday: number; index: number } | null>(null);
-  // Which generator drives the preview: the current recipe-based one, or the new
-  // metadata-driven allocator (beta). Allocator ignores saved/custom edits.
-  const [engine, setEngine] = useState<'recipes' | 'allocator'>(
-    () => (localStorage.getItem('pd_preview_engine') === 'allocator' ? 'allocator' : 'recipes')
-  );
-  useEffect(() => { localStorage.setItem('pd_preview_engine', engine); }, [engine]);
   const [scenariosOpen, setScenariosOpen] = useState(() => localStorage.getItem('pd_scenarios_open') !== '0');
   useEffect(() => { localStorage.setItem('pd_scenarios_open', scenariosOpen ? '1' : '0'); }, [scenariosOpen]);
 
@@ -155,14 +148,8 @@ export default function Preview() {
   const activeId = active ? lockId(active.splitKey, active.minutes, active.goalKey) : '';
   const hasCustom = !!lockedMap[activeId];   // a saved working copy exists (edited or reviewed)
   const isReviewed = !!reviewedMap[activeId];
-  const liveProgram =
-    split && goal && active
-      ? engine === 'allocator'
-        ? allocateProgram(split, recipes, goal, active.minutes, catalog)
-        : generateProgram(split, recipes, goal, active.minutes, catalog)
-      : [];
-  // The allocator is a fresh generated view — it doesn't overlay saved edits.
-  const program = engine === 'recipes' && hasCustom ? (lockedMap[activeId] as unknown as GenDay[]) : liveProgram;
+  const liveProgram = split && goal && active ? generateProgram(split, recipes, goal, active.minutes, catalog) : [];
+  const program = hasCustom ? (lockedMap[activeId] as unknown as GenDay[]) : liveProgram;
 
   // --- Per-scenario editing: everything below writes THIS scenario's locked
   // program (auto-locking/freezing the current program first), so no other split
@@ -360,16 +347,6 @@ export default function Preview() {
                       onClick={() => setActive({ ...active, goalKey: g.goal_key })}
                       className={`px-3 py-1.5 text-sm font-semibold ${active.goalKey === g.goal_key ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
                     >{g.display_name}</button>
-                  ))}
-                </div>
-                <div className="flex overflow-hidden rounded-lg border border-slate-300">
-                  {(['recipes', 'allocator'] as const).map((e) => (
-                    <button
-                      key={e}
-                      onClick={() => setEngine(e)}
-                      title={e === 'allocator' ? 'New metadata-driven allocator (beta)' : 'Current recipe-based generator'}
-                      className={`px-3 py-1.5 text-sm font-semibold ${engine === e ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-                    >{e === 'allocator' ? 'Allocator ᵇᵉᵗᵃ' : 'Recipes'}</button>
                   ))}
                 </div>
                 <button

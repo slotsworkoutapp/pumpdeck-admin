@@ -125,7 +125,12 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
   // Goal-adjusted copy of each slot (+ its estimated minutes, rest included).
   const adjusted = recipe.slots.map((s) => {
     const sets = Math.max(2, s.base_sets + goal.set_shift);
-    const repLow = Math.max(3, s.rep_low + goal.rep_shift);
+    // The goal's rep-shift applies to COMPOUNDS only — a "strength" goal takes a
+    // heavy compound to low reps, but isolation (curls, raises, pushdowns) stays
+    // in its authored 10–15 range regardless. Rest is the compound signal:
+    // compounds are authored at ≥120s, isolation below that.
+    const repShift = s.rest_seconds >= 120 ? goal.rep_shift : 0;
+    const repLow = Math.max(3, s.rep_low + repShift);
     // Round rest to a clean 15s increment and cap at 3:00 — the most rest a set
     // should ever get. (A raw multiplier gives ugly, over-long values like 288s.)
     const rest = Math.min(180, Math.round((s.rest_seconds * goal.rest_multiplier) / 15) * 15);
@@ -133,7 +138,7 @@ function buildDay(day: SplitDay, recipe: ContentRecipe | undefined, goal: Conten
       src: s,
       sets,
       repLow,
-      repHigh: Math.max(repLow, s.rep_high + goal.rep_shift),
+      repHigh: Math.max(repLow, s.rep_high + repShift),
       rest,
       mins: slotMinutes(sets, rest),
     };
