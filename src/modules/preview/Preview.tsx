@@ -736,8 +736,8 @@ function DayCard({ day, recipeId, busy, onOpenEditor, onRemoveSlot, dragging, on
   onDropAt: (weekday: number, index: number) => void;
 }) {
   const totalSets = day.slots.reduce((n, s) => n + s.sets, 0);
-  // Recompute the estimate from the CURRENT slots (sets + rest) rather than the
-  // frozen value captured at generation time, so edits update the time live.
+  // Recompute the estimate from the CURRENT slots (sets + rest) via the shared
+  // slotMinutes, so edits update live and it matches the app's estimate.
   const estMin = Math.round(day.slots.reduce((t, s) => t + slotMinutes(s.sets, s.rest), 0));
   return (
     <div className={`rounded-xl border bg-white ${dragging ? 'border-indigo-200' : 'border-slate-200'}`}>
