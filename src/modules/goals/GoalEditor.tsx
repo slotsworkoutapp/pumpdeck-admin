@@ -9,7 +9,9 @@ const NAMESPACE = '7a2c9f10-3e5b-4c8d-9f1a-2b6d4e8c0a33';
 
 export default function GoalEditor() {
   const { key } = useParams();
-  const isNew = key === 'new';
+  // The "new" route has no `:key` param, so `key` is undefined there — treat a
+  // missing key as new too, else "create" silently hits the update path.
+  const isNew = !key || key === 'new';
   const nav = useNavigate();
   const { goals, loading } = useGoals();
 

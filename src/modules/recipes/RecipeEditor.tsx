@@ -22,7 +22,9 @@ const blankSlot = (order: number): ContentSlot => ({
 
 export default function RecipeEditor() {
   const { id } = useParams();
-  const isNew = id === 'new';
+  // The "new" route has no `:id` param, so `id` is undefined there — treat a
+  // missing id as new too, else "create" silently hits the update path.
+  const isNew = !id || id === 'new';
   const nav = useNavigate();
   const { recipes, loading, reload } = useRecipes();
   const { catalog } = useCatalog();

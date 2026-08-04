@@ -235,7 +235,7 @@ export function generateProgram(
   // Carried across the week: the set of variations already used, so accessory
   // slots rotate to fresh variations (flat press one push, decline the next).
   const usedVariations = new Set<string>();
-  return [...split.day_assignments]
+  const days = [...split.day_assignments]
     .sort((a, b) => a.weekday - b.weekday)
     .map((d) => {
       const day = buildDay(d, d.day_type ? recipeByType.get(d.day_type) : undefined, goal, ceilingMinutes, catalog, familyMuscle, usedVariations);
@@ -244,6 +244,43 @@ export function generateProgram(
       }
       return day;
     });
+  return collapseUnifiedGroups(days);
+}
+
+// How many program-wide slots a unified group needs before it's worth splitting
+// into sub-muscles. Below this, a lone specific-muscle slot (e.g. "Mid Chest")
+// would silently lock out every upper/lower-chest exercise from being pickable —
+// so we make it a whole-group slot instead. 3 for the groups with three
+// sub-muscles; 2 for biceps (only two heads). Mirrors ProgramGeneratorV2.swift.
+const UNIFIED_SPLIT_THRESHOLD: Record<string, number> = {
+  chest: 3, triceps: 3, core: 3, forearms: 3, biceps: 2,
+};
+
+// If a unified group's PROGRAM-WIDE muscle-slot count is below its split
+// threshold, rewrite each of its muscle slots into a whole-group slot (a
+// variation slot keyed "group.<g>", which the app resolves to any exercise in
+// the group). Variation slots and other groups are untouched.
+function collapseUnifiedGroups(days: GenDay[]): GenDay[] {
+  const muscleSlotCount = new Map<string, number>();
+  for (const d of days)
+    for (const s of d.slots)
+      if (s.kind === 'muscle' && s.group && UNIFIED_GROUPS.has(s.group))
+        muscleSlotCount.set(s.group, (muscleSlotCount.get(s.group) ?? 0) + 1);
+  const collapse = new Set(
+    [...UNIFIED_GROUPS].filter((g) => {
+      const n = muscleSlotCount.get(g) ?? 0;
+      return n > 0 && n < (UNIFIED_SPLIT_THRESHOLD[g] ?? 3);
+    })
+  );
+  if (collapse.size === 0) return days;
+  return days.map((d) => ({
+    ...d,
+    slots: d.slots.map((s) => {
+      if (s.kind !== 'muscle' || !s.group || !collapse.has(s.group)) return s;
+      const g = s.group;
+      return { ...s, label: g.charAt(0).toUpperCase() + g.slice(1), kind: 'variation' as const, muscle: g, familyKey: `group.${g}` };
+    }),
+  }));
 }
 
 export const weekdayLabel = (w: number) => WD[w - 1] ?? '?';

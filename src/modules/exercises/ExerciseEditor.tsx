@@ -33,7 +33,9 @@ const blank: Omit<ContentExercise, 'id'> = {
 
 export default function ExerciseEditor() {
   const { id } = useParams();
-  const isNew = id === 'new';
+  // The "new" route (path: 'new') has no `:id` param, so `id` is undefined there
+  // — treat a missing id as new too, else the insert sends a null primary key.
+  const isNew = !id || id === 'new';
   const nav = useNavigate();
   const { catalog, loading } = useCatalog();
 

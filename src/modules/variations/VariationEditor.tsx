@@ -16,7 +16,9 @@ const blank: ContentFamily = {
 
 export default function VariationEditor() {
   const { key } = useParams();
-  const isNew = key === 'new';
+  // The "new" route has no `:key` param, so `key` is undefined there — treat a
+  // missing key as new too, else "create" silently hits the update path.
+  const isNew = !key || key === 'new';
   const nav = useNavigate();
   const { catalog, loading } = useCatalog();
 

@@ -51,6 +51,10 @@ export function validateCatalog(c: Catalog): Issue[] {
 
   // A "variation" with fewer than 2 members isn't really a variation.
   for (const f of c.families) {
+    // The virtual "group.<x>" families are group slots, not real movement
+    // families — they resolve to every exercise in the group at log time, so
+    // "no exercises" here is expected, not a problem.
+    if (f.key.startsWith('group.')) continue;
     const n = familyMemberCount.get(f.key) ?? 0;
     if (n === 0) {
       issues.push({ severity: 'warning', entity: f.display_name, message: `Family "${f.key}" has no exercises.` });

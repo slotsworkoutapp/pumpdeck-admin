@@ -15,7 +15,9 @@ const slotLabel = (s: ContentSlot, c: Catalog): string =>
 
 export default function SplitEditor() {
   const { key } = useParams();
-  const isNew = key === 'new';
+  // The "new" route has no `:key` param, so `key` is undefined there — treat a
+  // missing key as new too, else "create" silently hits the update path.
+  const isNew = !key || key === 'new';
   const nav = useNavigate();
   const { splits, loading } = useSplits();
   const { recipes } = useRecipes();

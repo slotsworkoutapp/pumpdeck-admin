@@ -269,3 +269,118 @@ export async function saveProgram(splitKey: string, minutes: number, goalKey: st
 export async function unlockProgram(splitKey: string, minutes: number, goalKey: string) {
   return supabase.from('content_locked_programs').delete().eq('split_key', splitKey).eq('minutes', minutes).eq('goal_key', goalKey);
 }
+
+// ── Creators (affiliate / referral attribution) ──────────────────────────────
+// Admin-only table (0137). Maps a referral code -> the creator who owns it and
+// their payout rate. New users type the code in onboarding; it lands on
+// profiles.referral_source, which we later join back to creators.code.
+export interface Creator {
+  id: string;
+  code: string;
+  name: string;
+  email: string | null;
+  payout_rate: number; // 0.30 = 30%
+  active: boolean;
+  user_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function useCreators() {
+  const [creators, setCreators] = useState<Creator[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase.from('creators').select('*').order('created_at', { ascending: false });
+      if (error) setError(error.message);
+      else setCreators((data ?? []) as Creator[]);
+      setLoading(false);
+    })();
+  }, []);
+  return { creators, error, loading };
+}
+
+// Per-creator payout summary from the creator_payout_summary() RPC (0139) —
+// joins referral_source -> creators -> subscriptions server-side. Admin-only.
+export interface CreatorPayout {
+  creator_id: string;
+  code: string;
+  name: string;
+  email: string | null;
+  payout_rate: number;
+  active: boolean;
+  signups: number;
+  paid_conversions: number;
+  active_subs: number;
+  est_gross: number;
+  est_owed: number;
+}
+
+export function useCreatorPayouts() {
+  const [rows, setRows] = useState<CreatorPayout[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase.rpc('creator_payout_summary');
+      if (error) setError(error.message);
+      else
+        setRows(
+          (data ?? []).map((r: Record<string, unknown>) => ({
+            creator_id: String(r.creator_id),
+            code: String(r.code),
+            name: String(r.name),
+            email: (r.email as string) ?? null,
+            payout_rate: Number(r.payout_rate),
+            active: Boolean(r.active),
+            signups: Number(r.signups),
+            paid_conversions: Number(r.paid_conversions),
+            active_subs: Number(r.active_subs),
+            est_gross: Number(r.est_gross),
+            est_owed: Number(r.est_owed),
+          }))
+        );
+      setLoading(false);
+    })();
+  }, []);
+  return { rows, error, loading };
+}
+
+// ── Moderation reports (admin) ───────────────────────────────────────────────
+// admin_moderation_reports() (0140) — reports enriched with handles + the
+// target's strike count. Actions use the mod_* RPCs (0091).
+export interface ModerationReport {
+  report_id: string;
+  created_at: string;
+  reason: string;
+  details: string | null;
+  kind: 'exercise' | 'user';
+  reporter_username: string | null;
+  target_user_id: string | null;
+  target_username: string | null;
+  target_display_name: string | null;
+  target_strikes: number;
+  exercise_owner_id: string | null;
+  exercise_id: string | null;
+}
+
+export function useModerationReports() {
+  const [rows, setRows] = useState<ModerationReport[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase.rpc('admin_moderation_reports');
+      if (error) setError(error.message);
+      else setRows((data ?? []) as ModerationReport[]);
+      setLoading(false);
+    })();
+  }, [tick]);
+  return { rows, error, loading, reload: () => setTick((t) => t + 1) };
+}
