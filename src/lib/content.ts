@@ -84,7 +84,15 @@ export interface SplitDay {
   weekday: number; // 1=Sun … 7=Sat
   day_name: string;
   day_type: string | null;
+  /// Muscle groups this day trains. Derived from `muscles` on save — kept so a
+  /// coarse summary (and any app build older than per-muscle assignments) still
+  /// has something to read. Don't edit directly.
   groups: string[];
+  /// content_muscles ids this day trains — the source of truth. Groups are too
+  /// coarse for real splits: front and side delt belong to push, rear delt to
+  /// pull, and no group means "two thirds of shoulders". Absent on rows written
+  /// before migration 0153.
+  muscles?: string[];
 }
 export interface ContentSplit {
   key: string;

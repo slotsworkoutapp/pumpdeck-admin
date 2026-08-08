@@ -53,6 +53,50 @@ export default function SplitEditor() {
   const setDay = (i: number, patch: Partial<SplitDay>) =>
     setAssignments((a) => a.map((d, j) => (j === i ? { ...d, ...patch } : d)));
 
+  /// Enabled muscles per group, in the catalog's own order.
+  const musclesByGroup = useMemo(() => {
+    const m = new Map<string, { id: string; name: string; sort_order: number }[]>();
+    for (const mu of catalog?.muscles ?? []) {
+      if (mu.enabled === false) continue;
+      if (!GROUPS.includes(mu.group_raw)) continue;
+      const list = m.get(mu.group_raw) ?? [];
+      list.push({ id: mu.id, name: mu.name, sort_order: mu.sort_order });
+      m.set(mu.group_raw, list);
+    }
+    for (const list of m.values()) list.sort((a, b) => a.sort_order - b.sort_order);
+    return m;
+  }, [catalog]);
+
+  /// A day's muscle ids, falling back to expanding its groups for rows written
+  /// before per-muscle assignments existed.
+  const dayMuscles = (d: SplitDay): string[] => {
+    if (d.muscles) return d.muscles;
+    return d.groups.flatMap((g) => (musclesByGroup.get(g) ?? []).map((m) => m.id));
+  };
+
+  /// `groups` is derived, never edited: it's the set of groups the chosen
+  /// muscles belong to, so a coarse consumer still sees something sane.
+  const groupsFor = (ids: string[]): string[] => {
+    const byId = new Map<string, string>();
+    for (const [g, list] of musclesByGroup) for (const m of list) byId.set(m.id, g);
+    const gs = new Set(ids.map((id) => byId.get(id)).filter(Boolean) as string[]);
+    return GROUPS.filter((g) => gs.has(g));
+  };
+
+  const writeMuscles = (i: number, ids: string[]) =>
+    setDay(i, { muscles: ids, groups: groupsFor(ids) });
+
+  const toggleMuscle = (i: number, d: SplitDay, id: string) => {
+    const cur = dayMuscles(d);
+    writeMuscles(i, cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+  };
+
+  const toggleGroup = (i: number, d: SplitDay, members: { id: string }[], on: boolean) => {
+    const cur = new Set(dayMuscles(d));
+    for (const m of members) on ? cur.add(m.id) : cur.delete(m.id);
+    writeMuscles(i, [...cur]);
+  };
+
   async function save() {
     setError(null);
     if (!displayName.trim()) return setError('Display name is required.');
@@ -129,7 +173,7 @@ export default function SplitEditor() {
       <div className="mb-2 flex items-center justify-between">
         <span className="text-sm font-bold text-slate-700">Days</span>
         <button
-          onClick={() => setAssignments((a) => [...a, { weekday: 2, day_name: '', day_type: null, groups: [] }])}
+          onClick={() => setAssignments((a) => [...a, { weekday: 2, day_name: '', day_type: null, groups: [], muscles: [] }])}
           className="rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-700 hover:bg-slate-200"
         >
           + Add day
@@ -168,20 +212,47 @@ export default function SplitEditor() {
               </div>
             )}
 
-            {/* Muscle groups this day covers — click the maps to toggle */}
-            <div className="mt-2 flex flex-wrap gap-1">
+            {/* Muscles this day trains. Per muscle, not per group: front and
+                side delt belong to push while rear delt belongs to pull, and
+                no group can say that. Click the group map to toggle all of its
+                muscles at once — that's the common case — then adjust. */}
+            <div className="mt-2 space-y-1">
               {GROUPS.map((g) => {
-                const on = d.groups.includes(g);
+                const members = musclesByGroup.get(g) ?? [];
+                if (!members.length) return null;
+                const sel = new Set(dayMuscles(d));
+                const allOn = members.every((m) => sel.has(m.id));
                 return (
-                  <button
-                    key={g}
-                    onClick={() => setDay(i, { groups: on ? d.groups.filter((x) => x !== g) : [...d.groups, g] })}
-                    title={g}
-                    className={`flex flex-col items-center rounded-lg border px-1.5 py-1 transition ${on ? 'border-slate-300 bg-white' : 'border-transparent opacity-30 hover:opacity-60'}`}
-                  >
-                    <GroupMap group={g} className="size-8 object-contain" />
-                    <span className="text-[9px] font-semibold capitalize text-slate-500">{g}</span>
-                  </button>
+                  <div key={g} className="flex items-start gap-2">
+                    <button
+                      onClick={() => toggleGroup(i, d, members, !allOn)}
+                      title={allOn ? `Remove all ${g}` : `Add all ${g}`}
+                      className={`flex w-14 shrink-0 flex-col items-center rounded-lg border px-1 py-1 transition ${
+                        members.some((m) => sel.has(m.id)) ? 'border-slate-300 bg-white' : 'border-transparent opacity-30 hover:opacity-60'
+                      }`}
+                    >
+                      <GroupMap group={g} className="size-8 object-contain" />
+                      <span className="text-[9px] font-semibold capitalize text-slate-500">{g}</span>
+                    </button>
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {members.map((m) => {
+                        const on = sel.has(m.id);
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => toggleMuscle(i, d, m.id)}
+                            className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+                              on
+                                ? 'border-slate-300 bg-white text-slate-700'
+                                : 'border-transparent bg-slate-50 text-slate-400 hover:text-slate-600'
+                            }`}
+                          >
+                            {m.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
             </div>
