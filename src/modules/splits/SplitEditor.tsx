@@ -4,9 +4,9 @@ import { supabase } from '../../lib/supabase';
 import { useSplits, useRecipes, useCatalog, type SplitDay, type ContentSlot, type Catalog } from '../../lib/content';
 import { Field, TextField, NumberField, SelectField, Toggle, SaveBar } from '../../components/ui';
 import { GroupMap } from '../../components/GroupMap';
+import { MusclePicker, orderedMuscles, groupsForMuscles, musclesForGroups } from '../../components/MusclePicker';
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const GROUPS = ['chest', 'back', 'shoulders', 'legs', 'core', 'biceps', 'triceps', 'forearms'];
 
 const slotGroup = (s: ContentSlot, c: Catalog): string | null =>
   s.slot_kind === 'muscle' ? c.musclesById.get(s.muscle_id ?? '')?.group_raw ?? null : c.familiesByKey.get(s.family_key ?? '')?.muscle_group_raw ?? null;
@@ -53,49 +53,15 @@ export default function SplitEditor() {
   const setDay = (i: number, patch: Partial<SplitDay>) =>
     setAssignments((a) => a.map((d, j) => (j === i ? { ...d, ...patch } : d)));
 
-  /// Enabled muscles per group, in the catalog's own order.
-  const musclesByGroup = useMemo(() => {
-    const m = new Map<string, { id: string; name: string; sort_order: number }[]>();
-    for (const mu of catalog?.muscles ?? []) {
-      if (mu.enabled === false) continue;
-      if (!GROUPS.includes(mu.group_raw)) continue;
-      const list = m.get(mu.group_raw) ?? [];
-      list.push({ id: mu.id, name: mu.name, sort_order: mu.sort_order });
-      m.set(mu.group_raw, list);
-    }
-    for (const list of m.values()) list.sort((a, b) => a.sort_order - b.sort_order);
-    return m;
-  }, [catalog]);
+  const allMuscles = useMemo(() => orderedMuscles(catalog?.muscles), [catalog]);
 
-  /// A day's muscle ids, falling back to expanding its groups for rows written
-  /// before per-muscle assignments existed.
-  const dayMuscles = (d: SplitDay): string[] => {
-    if (d.muscles) return d.muscles;
-    return d.groups.flatMap((g) => (musclesByGroup.get(g) ?? []).map((m) => m.id));
-  };
+  /// A day's muscle ids, expanding its groups for rows written before
+  /// per-muscle assignments existed (migration 0153).
+  const dayMuscles = (d: SplitDay): string[] => d.muscles ?? musclesForGroups(allMuscles, d.groups);
 
-  /// `groups` is derived, never edited: it's the set of groups the chosen
-  /// muscles belong to, so a coarse consumer still sees something sane.
-  const groupsFor = (ids: string[]): string[] => {
-    const byId = new Map<string, string>();
-    for (const [g, list] of musclesByGroup) for (const m of list) byId.set(m.id, g);
-    const gs = new Set(ids.map((id) => byId.get(id)).filter(Boolean) as string[]);
-    return GROUPS.filter((g) => gs.has(g));
-  };
-
+  /// `groups` is derived from the chosen muscles, never edited directly.
   const writeMuscles = (i: number, ids: string[]) =>
-    setDay(i, { muscles: ids, groups: groupsFor(ids) });
-
-  const toggleMuscle = (i: number, d: SplitDay, id: string) => {
-    const cur = dayMuscles(d);
-    writeMuscles(i, cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
-  };
-
-  const toggleGroup = (i: number, d: SplitDay, members: { id: string }[], on: boolean) => {
-    const cur = new Set(dayMuscles(d));
-    for (const m of members) on ? cur.add(m.id) : cur.delete(m.id);
-    writeMuscles(i, [...cur]);
-  };
+    setDay(i, { muscles: ids, groups: groupsForMuscles(allMuscles, ids) });
 
   async function save() {
     setError(null);
@@ -212,49 +178,13 @@ export default function SplitEditor() {
               </div>
             )}
 
-            {/* Muscles this day trains. Per muscle, not per group: front and
-                side delt belong to push while rear delt belongs to pull, and
-                no group can say that. Click the group map to toggle all of its
-                muscles at once — that's the common case — then adjust. */}
-            <div className="mt-2 space-y-1">
-              {GROUPS.map((g) => {
-                const members = musclesByGroup.get(g) ?? [];
-                if (!members.length) return null;
-                const sel = new Set(dayMuscles(d));
-                const allOn = members.every((m) => sel.has(m.id));
-                return (
-                  <div key={g} className="flex items-start gap-2">
-                    <button
-                      onClick={() => toggleGroup(i, d, members, !allOn)}
-                      title={allOn ? `Remove all ${g}` : `Add all ${g}`}
-                      className={`flex w-14 shrink-0 flex-col items-center rounded-lg border px-1 py-1 transition ${
-                        members.some((m) => sel.has(m.id)) ? 'border-slate-300 bg-white' : 'border-transparent opacity-30 hover:opacity-60'
-                      }`}
-                    >
-                      <GroupMap group={g} className="size-8 object-contain" />
-                      <span className="text-[9px] font-semibold capitalize text-slate-500">{g}</span>
-                    </button>
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {members.map((m) => {
-                        const on = sel.has(m.id);
-                        return (
-                          <button
-                            key={m.id}
-                            onClick={() => toggleMuscle(i, d, m.id)}
-                            className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
-                              on
-                                ? 'border-slate-300 bg-white text-slate-700'
-                                : 'border-transparent bg-slate-50 text-slate-400 hover:text-slate-600'
-                            }`}
-                          >
-                            {m.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
+            {/* Muscles this day trains — same row as the program preview. */}
+            <div className="mt-2">
+              <MusclePicker
+                all={allMuscles}
+                value={dayMuscles(d)}
+                onChange={(ids) => writeMuscles(i, ids)}
+              />
             </div>
           </div>
         ))}

@@ -1,11 +1,13 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
 import {
   useSplits, useRecipes, useGoals, useCatalog, useLockedPrograms,
   saveProgram, unlockProgram, lockId,
   type Catalog, type ContentGoal, type ContentSplit, type LockedDay,
 } from '../../lib/content';
 import { generateProgram, slotMinutes, weekdayLabel, type GenDay } from '../../lib/generate';
+import { MusclePicker, orderedMuscles, groupsForMuscles, musclesForGroups, type PickMuscle } from '../../components/MusclePicker';
 import { GROUP_ORDER } from '../../lib/bodymap';
 import { COVERAGE_GROUPS, GROUP_LABEL, perGroupSets, groupTarget, coverageStatus, statusChip } from '../../lib/coverage';
 
@@ -65,6 +67,34 @@ export default function Preview() {
   useEffect(() => { localStorage.setItem('pd_scenarios_open', scenariosOpen ? '1' : '0'); }, [scenariosOpen]);
 
   const lockedMap = locks ?? {};
+
+  // --- Per-day muscle assignments (they live on the SPLIT, not this scenario)
+  const allMuscles = useMemo(() => orderedMuscles(catalog?.muscles), [catalog]);
+  /// weekday → muscle ids, seeded from the split and updated optimistically so
+  /// the row responds without refetching every split.
+  const [dayMuscles, setDayMuscles] = useState<Record<number, string[]>>({});
+  const [muscleErr, setMuscleErr] = useState<string | null>(null);
+
+  // The viewed split, computed here rather than reusing the `split` const
+  // below — that one is declared after this component's early returns, and a
+  // hook can't sit after those.
+  const activeSplit = useMemo(
+    () => (active && splits ? splits.find((s) => s.key === active.splitKey) : undefined),
+    [splits, active]
+  );
+
+  // Reseed the muscle rows whenever the viewed split changes. A day written
+  // before migration 0153 has only `groups`, so expand those.
+  useEffect(() => {
+    if (!activeSplit || !allMuscles.length) return;
+    const next: Record<number, string[]> = {};
+    for (const d of activeSplit.day_assignments) {
+      next[d.weekday] = d.muscles ?? musclesForGroups(allMuscles, d.groups ?? []);
+    }
+    setDayMuscles(next);
+    setMuscleErr(null);
+  }, [activeSplit, allMuscles]);
+
 
   // Seed the active scenario once data lands — restore the last one viewed if it's
   // still valid, otherwise a sensible default.
@@ -151,6 +181,29 @@ export default function Preview() {
   const activeId = active ? lockId(active.splitKey, active.minutes, active.goalKey) : '';
   const hasCustom = !!lockedMap[activeId];   // a saved working copy exists (edited or reviewed)
   const isReviewed = !!reviewedMap[activeId];
+
+  /// Persist one day's muscles onto the split. This edits the SPLIT, so it
+  /// applies to every goal + session length of it, unlike the slot edits on
+  /// this page which only touch the scenario being viewed.
+  async function saveDayMuscles(weekday: number, ids: string[]) {
+    if (!split) return;
+    setDayMuscles((m) => ({ ...m, [weekday]: ids }));   // optimistic
+    const assignments = split.day_assignments.map((d) =>
+      d.weekday === weekday
+        ? { ...d, muscles: ids, groups: groupsForMuscles(allMuscles, ids) }
+        : d
+    );
+    const { error } = await supabase
+      .from('content_split_templates')
+      .update({ day_assignments: assignments })
+      .eq('key', split.key);
+    if (error) { setMuscleErr(error.message); return; }
+    // Keep the in-memory split in step so a later save doesn't overwrite this
+    // one from stale data (useSplits has no reload).
+    split.day_assignments = assignments;
+    setMuscleErr(null);
+  }
+
   const liveProgram = split && goal && active ? generateProgram(split, recipes, goal, active.minutes, catalog) : [];
   const program = hasCustom ? (lockedMap[activeId] as unknown as GenDay[]) : liveProgram;
 
@@ -385,6 +438,9 @@ export default function Preview() {
                   onSlotDragStart={(weekday, index) => setDragItem({ kind: 'slot', weekday, index })}
                   onDragEnd={() => setDragItem(null)}
                   onDropAt={handleDrop}
+                  allMuscles={allMuscles}
+                  muscleIds={dayMuscles[d.weekday] ?? []}
+                  onMusclesChange={(ids) => saveDayMuscles(d.weekday, ids)}
                 />
               ))}
             </div>
@@ -739,10 +795,14 @@ function DropZone({ onDrop }: { onDrop: () => void }) {
   );
 }
 
-function DayCard({ day, recipeId, busy, onOpenEditor, onRemoveSlot, dragging, onSlotDragStart, onDragEnd, onDropAt }: {
+function DayCard({ day, recipeId, busy, onOpenEditor, onRemoveSlot, dragging, onSlotDragStart, onDragEnd, onDropAt, allMuscles, muscleIds, onMusclesChange }: {
   day: GenDay;
   recipeId?: string;
   busy: boolean;
+  /// Every muscle, for the day's assignment row.
+  allMuscles: PickMuscle[];
+  muscleIds: string[];
+  onMusclesChange: (ids: string[]) => void;
   onOpenEditor: (weekday: number, index: number) => void;
   onRemoveSlot: (weekday: number, index: number) => void;
   dragging: boolean;
@@ -764,6 +824,13 @@ function DayCard({ day, recipeId, busy, onOpenEditor, onRemoveSlot, dragging, on
           {day.slots.length > 0 && <span className="text-xs font-semibold text-slate-400">{day.slots.length} ex · {totalSets} sets · ~{estMin}m</span>}
           {recipeId && <Link to={`/recipes/${recipeId}`} className="text-xs font-semibold text-indigo-500 hover:underline">recipe</Link>}
         </div>
+      </div>
+      {/* Muscles this day trains — what the app shows on the day card and
+          filters Add Slot by. Broader than the slots: a muscle can belong to
+          the day without a slot fitting this week's session budget. Saves onto
+          the SPLIT, so it applies to every goal + length of it. */}
+      <div className="border-b border-slate-100 px-4 py-2">
+        <MusclePicker all={allMuscles} value={muscleIds} onChange={onMusclesChange} disabled={busy} />
       </div>
       {day.note ? (
         <div
