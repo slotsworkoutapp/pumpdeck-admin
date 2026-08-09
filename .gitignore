@@ -2,3 +2,8 @@ node_modules/
 dist/
 .env
 .env.local
+
+# Derived tagging artifacts — regenerate with scripts/infer-equipment.mjs.
+# The applied result lives in the app repo as migration 0156.
+generated/equipment-*.sql
+generated/equipment-*.tsv
