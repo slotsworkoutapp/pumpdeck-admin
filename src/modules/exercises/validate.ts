@@ -47,6 +47,12 @@ export function validateCatalog(c: Catalog): Issue[] {
     if (e.default_rest_seconds < 0 || (e.default_rest_seconds === 0 && !zeroRestOk)) {
       issues.push({ severity: 'warning', entity: e.name, message: 'Rest is 0 or negative.' });
     }
+    // Untagged equipment is legal (the app shows it to everyone rather than
+    // hiding it), but it can't be filtered — so it's the tagging pass's to-do
+    // list. A warning, not an error.
+    if (!e.equipment) {
+      issues.push({ severity: 'warning', entity: e.name, message: 'No equipment tagged — shows for every user, can\'t be filtered.' });
+    }
   }
 
   // A "variation" with fewer than 2 members isn't really a variation.

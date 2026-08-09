@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { v5 as uuidv5 } from 'uuid';
 import { supabase } from '../../lib/supabase';
-import { useCatalog, type ContentExercise } from '../../lib/content';
+import { useCatalog, EQUIPMENT_OPTIONS, type ContentExercise } from '../../lib/content';
 import { Field, TextField, NumberField, TextArea, SelectField, MultiSelect, Toggle, SaveBar } from '../../components/ui';
 import ExerciseMedia from './ExerciseMedia';
 
@@ -25,6 +25,7 @@ const blank: Omit<ContentExercise, 'id'> = {
   additional_primary_muscle_ids: [],
   default_rest_seconds: 90,
   movement_family_key: null,
+  equipment: null,
   description: null,
   notes: null,
   sort_order: 999,
@@ -67,6 +68,9 @@ export default function ExerciseEditor() {
   async function save() {
     setError(null);
     if (!form.name.trim()) return setError('Name is required.');
+    // Required for NEW exercises only, so no untagged row enters the catalog.
+    // Existing ones stay editable while the tagging pass fills them in.
+    if (isNew && !form.equipment) return setError('Please select the equipment.');
     setSaving(true);
     const rowId = isNew ? uuidv5(form.name.trim(), NAMESPACE) : (id as string);
     const { error } = await supabase.from('content_exercises').upsert({
@@ -75,6 +79,7 @@ export default function ExerciseEditor() {
       name: form.name.trim(),
       primary_muscle_id: form.primary_muscle_id || null,
       movement_family_key: form.movement_family_key || null,
+      equipment: form.equipment || null,
       description: form.description || null,
       notes: form.notes || null,
     });
@@ -114,6 +119,18 @@ export default function ExerciseEditor() {
             <SelectField value={form.kind_raw} onChange={(v) => set('kind_raw', v)} options={KIND_OPTIONS} />
           </Field>
         </div>
+
+        <Field
+          label="Equipment"
+          hint="What the exercise needs. Users declare what they own, and we hide the rest + filter their Discover feed. Untagged shows for everyone."
+        >
+          <SelectField
+            value={form.equipment ?? ''}
+            onChange={(v) => set('equipment', v || null)}
+            options={EQUIPMENT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            placeholder="— not tagged —"
+          />
+        </Field>
 
         <Field label="Primary muscle" hint={form.type_raw === 'cardio' ? 'Cardio is usually muscle-agnostic — leave blank.' : undefined}>
           <SelectField value={form.primary_muscle_id ?? ''} onChange={(v) => set('primary_muscle_id', v || null)} options={muscleOptions} placeholder="— none —" />

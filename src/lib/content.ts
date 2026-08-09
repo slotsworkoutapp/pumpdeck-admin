@@ -7,6 +7,25 @@ import { supabase } from './supabase';
 // "stretch" (lifters say stretch, not cool down).
 export const kindLabel = (k: string) => (k === 'cooldown' ? 'stretch' : k === 'warmup' ? 'warm-up' : k);
 
+// Equipment an exercise needs — exactly one per exercise. Keys must stay in
+// sync with the check constraint (migration 0155) and the app's enum; only
+// labels are safe to change. 'cable' is separate from 'machine' because a home
+// gym often has one without the other. 'other' is never filtered by the app.
+export const EQUIPMENT_OPTIONS = [
+  { value: 'none', label: 'None / Bodyweight' },
+  { value: 'barbell', label: 'Barbell' },
+  { value: 'dumbbell', label: 'Dumbbell' },
+  { value: 'kettlebell', label: 'Kettlebell' },
+  { value: 'machine', label: 'Machine' },
+  { value: 'cable', label: 'Cable' },
+  { value: 'plate', label: 'Plate' },
+  { value: 'band', label: 'Resistance band' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+export const equipmentLabel = (e: string | null) =>
+  EQUIPMENT_OPTIONS.find((o) => o.value === e)?.label ?? '—';
+
 export interface ContentMuscle {
   id: string;
   name: string;
@@ -37,6 +56,9 @@ export interface ContentExercise {
   additional_primary_muscle_ids: string[];
   default_rest_seconds: number;
   movement_family_key: string | null;
+  /// Null = not yet tagged. The app treats null as "always show" rather than
+  /// hiding it, so an untagged exercise is never lost — it just isn't filterable.
+  equipment: string | null;
   description: string | null;
   notes: string | null;
   sort_order: number;
