@@ -59,6 +59,7 @@ const exercises = ex.data.map((e) => ({
   additional_primary_muscle_ids: e.additional_primary_muscle_ids ?? [],
   default_rest_seconds: e.default_rest_seconds,
   movement_family_key: e.movement_family_key,
+  equipment: e.equipment,
   sort_order: e.sort_order,
 }));
 
