@@ -380,6 +380,40 @@ export function useCreatorPayouts() {
   return { rows, error, loading };
 }
 
+// ── Feedback (admin) ─────────────────────────────────────────────────────────
+// admin_feedback() (0162). The table itself has no SELECT policy — this app
+// runs on the anon key, so reads go through a SECURITY DEFINER function that
+// re-checks is_admin server-side.
+export interface FeedbackRow {
+  id: string;
+  created_at: string;
+  kind: 'feedback' | 'bug';
+  message: string;
+  app_version: string | null;
+  os_version: string | null;
+  device_model: string | null;
+  user_id: string;
+  username: string | null;
+  display_name: string | null;
+}
+
+export function useFeedback() {
+  const [rows, setRows] = useState<FeedbackRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase.rpc('admin_feedback');
+      if (error) setError(error.message);
+      else setRows((data ?? []) as FeedbackRow[]);
+      setLoading(false);
+    })();
+  }, [tick]);
+  return { rows, error, loading, reload: () => setTick((t) => t + 1) };
+}
+
 // ── Moderation reports (admin) ───────────────────────────────────────────────
 // admin_moderation_reports() (0140) — reports enriched with handles + the
 // target's strike count. Actions use the mod_* RPCs (0091).
