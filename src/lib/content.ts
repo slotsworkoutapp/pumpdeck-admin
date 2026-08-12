@@ -384,6 +384,9 @@ export function useCreatorPayouts() {
 // admin_feedback() (0162). The table itself has no SELECT policy — this app
 // runs on the anon key, so reads go through a SECURITY DEFINER function that
 // re-checks is_admin server-side.
+export type FeedbackStatus = 'new' | 'open' | 'done' | 'dismissed';
+export type FeedbackPriority = 'high' | 'normal' | 'low';
+
 export interface FeedbackRow {
   id: string;
   created_at: string;
@@ -395,6 +398,24 @@ export interface FeedbackRow {
   user_id: string;
   username: string | null;
   display_name: string | null;
+  status: FeedbackStatus;
+  priority: FeedbackPriority;
+  admin_note: string | null;
+}
+
+/// Triage a row. Omitted fields are left alone server-side, so changing
+/// priority doesn't require restating status.
+export async function updateFeedback(
+  id: string,
+  patch: { status?: FeedbackStatus; priority?: FeedbackPriority; note?: string },
+) {
+  const { error } = await supabase.rpc('admin_update_feedback', {
+    p_id: id,
+    p_status: patch.status ?? null,
+    p_priority: patch.priority ?? null,
+    p_note: patch.note ?? null,
+  });
+  if (error) throw new Error(error.message);
 }
 
 export function useFeedback() {
