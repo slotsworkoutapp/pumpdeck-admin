@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { kindLabel, type Catalog, type ContentExercise } from '../../lib/content';
+import { kindLabel, equipmentLabel, type Catalog, type ContentExercise } from '../../lib/content';
 import { GROUP_ORDER as MAPPED_GROUPS } from '../../lib/bodymap';
 
 const HAS_MAP = new Set<string>(MAPPED_GROUPS);
@@ -161,7 +161,18 @@ function ExRow({ e, secondary, poster, onOpen }: { e: ContentExercise; secondary
       {e.kind_raw !== 'normal' && <span className="text-[10px] font-semibold uppercase text-slate-400">{kindLabel(e.kind_raw)}</span>}
       {!e.enabled && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">off</span>}
       {secondary && <span className="truncate text-xs text-slate-400">· {secondary}</span>}
-      <span className="ml-auto shrink-0 tabular-nums text-xs text-slate-400">{e.default_rest_seconds}s</span>
+      {/* Equipment sits with the rest time on the right — it's a property of
+          the exercise, not part of its name, and right-aligning keeps the
+          column scannable when you're auditing what's been tagged. Untagged
+          rows show nothing rather than a dash, so gaps stand out. */}
+      <span className="ml-auto flex shrink-0 items-center gap-2">
+        {e.equipment && (
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+            {equipmentLabel(e.equipment)}
+          </span>
+        )}
+        <span className="tabular-nums text-xs text-slate-400">{e.default_rest_seconds}s</span>
+      </span>
     </button>
   );
 }
