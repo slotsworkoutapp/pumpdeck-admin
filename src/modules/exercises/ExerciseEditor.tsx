@@ -9,6 +9,8 @@ import ExerciseMedia from './ExerciseMedia';
 const NAMESPACE = '9e1b7c42-1f3a-4d58-9a2e-6c0b5d8f44a1'; // == SeedID namespace
 
 const TYPES = ['reps', 'cardio', 'timed'];
+const MUSCLE_GROUPS = ['chest', 'back', 'shoulders', 'legs', 'core', 'biceps', 'triceps', 'forearms'];
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 // value stays 'cooldown' (what the app expects) but shows as "Stretch".
 const KIND_OPTIONS = [
   { value: 'normal', label: 'Normal' },
@@ -21,6 +23,7 @@ const blank: Omit<ContentExercise, 'id'> = {
   type_raw: 'reps',
   kind_raw: 'normal',
   primary_muscle_id: null,
+  primary_group_raw: null,
   collection_id: null,
   trains_tagged_muscle: true,
   secondary_muscle_ids: [],
@@ -92,6 +95,7 @@ export default function ExerciseEditor() {
       ...form,
       name: form.name.trim(),
       primary_muscle_id: form.primary_muscle_id || null,
+      primary_group_raw: form.primary_group_raw || null,
       collection_id: form.collection_id || null,
       movement_family_key: form.movement_family_key || null,
       equipment: form.equipment || null,
@@ -155,8 +159,37 @@ export default function ExerciseEditor() {
               : 'Anatomical muscles only. A Burpee has no honest primary muscle — leave it blank and give it a collection.'
           }
         >
-          <SelectField value={form.primary_muscle_id ?? ''} onChange={(v) => set('primary_muscle_id', v || null)} options={muscleOptions} placeholder="— none —" />
+          <SelectField
+            value={form.primary_muscle_id ?? ''}
+            onChange={(v) => {
+              set('primary_muscle_id', v || null);
+              // A group is a coarser answer to the same question — the app
+              // treats them as mutually exclusive, so the dashboard must too.
+              if (v) set('primary_group_raw', null);
+            }}
+            options={muscleOptions}
+            placeholder="— none —"
+          />
         </Field>
+
+        {/* Warm-ups and stretches only. Nobody asks for a side-delt stretch —
+            they want a shoulder stretch, and the group is the honest filing. */}
+        {(form.kind_raw === 'warmup' || form.kind_raw === 'cooldown') && (
+          <Field
+            label="Or a muscle group"
+            hint="For stretches and warm-ups, where naming one head is false precision. Fills that group's stretch/warm-up slots. Replaces the primary muscle rather than joining it."
+          >
+            <SelectField
+              value={form.primary_group_raw ?? ''}
+              onChange={(v) => {
+                set('primary_group_raw', v || null);
+                if (v) set('primary_muscle_id', null);
+              }}
+              options={MUSCLE_GROUPS.map((g) => ({ value: g, label: cap(g) }))}
+              placeholder="— none —"
+            />
+          </Field>
+        )}
 
         <Field
           label="Collection"

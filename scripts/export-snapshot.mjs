@@ -62,6 +62,7 @@ const exercises = ex.data.map((e) => ({
   id: e.id, name: e.name, type_raw: e.type_raw, kind_raw: e.kind_raw,
   primary_muscle_id: e.primary_muscle_id,
   collection_id: e.collection_id ?? null,
+  primary_group_raw: e.primary_group_raw ?? null,
   trains_tagged_muscle: e.trains_tagged_muscle ?? true,
   secondary_muscle_ids: e.secondary_muscle_ids ?? [],
   additional_primary_muscle_ids: e.additional_primary_muscle_ids ?? [],
