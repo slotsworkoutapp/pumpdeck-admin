@@ -82,6 +82,10 @@ export default function ExerciseEditor() {
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
 
+  /// Warm-ups and stretches file by GROUP and list the muscles they reach —
+  /// the app collapsed its two muscle rows into one for exactly these.
+  const isStretchy = form.kind_raw === 'warmup' || form.kind_raw === 'cooldown';
+
   async function save() {
     setError(null);
     if (!form.name.trim()) return setError('Name is required.');
@@ -211,7 +215,14 @@ export default function ExerciseEditor() {
           />
         )}
 
-        <Field label="Secondary muscles">
+        <Field
+          label={isStretchy ? 'Muscles it reaches' : 'Secondary muscles'}
+          hint={
+            isStretchy
+              ? "Which muscles this stretches — no primary/secondary split, since warm-ups and stretches earn no volume either way. It's what the app's per-muscle stretch slots resolve on (legs only, now that the other groups stop at the group)."
+              : undefined
+          }
+        >
           <MultiSelect selected={form.secondary_muscle_ids} onChange={(v) => set('secondary_muscle_ids', v)} options={muscleOptions} />
         </Field>
 
