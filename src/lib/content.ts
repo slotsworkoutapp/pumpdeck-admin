@@ -35,6 +35,12 @@ export interface ContentMuscle {
   description: string | null;
   color_hex: string | null;
   icon_name: string | null;
+  /// Collections only: 'muscle' | 'variation'. Null = the app's default,
+  /// which groups by variation.
+  groups_by: string | null;
+  /// Collections only: the default `trains_tagged_muscle` for exercises filed
+  /// here. Null = true.
+  exercises_train_muscle: boolean | null;
   enabled: boolean;
 }
 

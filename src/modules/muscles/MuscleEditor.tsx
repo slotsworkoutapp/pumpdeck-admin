@@ -4,6 +4,7 @@ import { v5 as uuidv5 } from 'uuid';
 import { supabase } from '../../lib/supabase';
 import { useCatalog, type ContentMuscle } from '../../lib/content';
 import { Field, TextField, NumberField, TextArea, SelectField, Toggle, SaveBar } from '../../components/ui';
+import { COLLECTION_COLORS, COLLECTION_ICONS, DEFAULT_COLLECTION_ICON } from '../../lib/collectionStyle';
 
 const NAMESPACE = '9e1b7c42-1f3a-4d58-9a2e-6c0b5d8f44a1';
 const GROUPS = ['chest', 'back', 'shoulders', 'legs', 'core', 'biceps', 'triceps', 'forearms', 'focus'];
@@ -16,6 +17,8 @@ const blank: Omit<ContentMuscle, 'id'> = {
   description: null,
   color_hex: null,
   icon_name: null,
+  groups_by: null,
+  exercises_train_muscle: null,
   enabled: true,
 };
 
@@ -99,19 +102,86 @@ export default function MuscleEditor() {
           <TextArea value={form.description ?? ''} onChange={(e) => set('description', e.target.value)} />
         </Field>
         {isFocus && (
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Color (hex)" hint="Focuses only.">
-              <TextField value={form.color_hex ?? ''} onChange={(e) => set('color_hex', e.target.value)} placeholder="#3B82F6" />
+          <>
+            <Field label="Colour" hint="The sixteen the app's own picker offers. Default paints in the accent colour.">
+              <div className="flex flex-wrap gap-2">
+                <Swatch
+                  color={null}
+                  selected={!form.color_hex}
+                  onClick={() => set('color_hex', null)}
+                />
+                {COLLECTION_COLORS.map((hex) => (
+                  <Swatch
+                    key={hex}
+                    color={hex}
+                    selected={(form.color_hex ?? '').toLowerCase() === hex.toLowerCase()}
+                    onClick={() => set('color_hex', hex)}
+                  />
+                ))}
+              </div>
             </Field>
-            <Field label="Icon (SF Symbol)" hint="Focuses only.">
-              <TextField value={form.icon_name ?? ''} onChange={(e) => set('icon_name', e.target.value)} placeholder="star.fill" />
+
+            <Field
+              label="Icon"
+              hint="SF Symbols can't render here, so each shows an emoji stand-in — the app draws the real symbol."
+            >
+              <SelectField
+                value={form.icon_name ?? ''}
+                onChange={(v) => set('icon_name', v || null)}
+                options={COLLECTION_ICONS.map((i) => ({ value: i.value, label: `${i.emoji}  ${i.label}` }))}
+                placeholder={`— default (${COLLECTION_ICONS.find((i) => i.value === DEFAULT_COLLECTION_ICON)?.label ?? 'Star'}) —`}
+              />
             </Field>
-          </div>
+
+            <Field
+              label="Group exercises by"
+              hint="How this collection's page splits its exercises. Muscle suits stretches (a hip opener isn't a version of a shoulder dislocate); variation suits movements that come in versions."
+            >
+              <SelectField
+                value={form.groups_by ?? ''}
+                onChange={(v) => set('groups_by', v || null)}
+                options={[
+                  { value: 'variation', label: 'Variation — by movement or purpose' },
+                  { value: 'muscle', label: 'Muscle — by the muscle they target' },
+                ]}
+                placeholder="— default (variation) —"
+              />
+            </Field>
+
+            <Toggle
+              checked={form.exercises_train_muscle ?? true}
+              onChange={(v) => set('exercises_train_muscle', v)}
+              label="Count toward muscle training (default for exercises filed here)"
+            />
+            <p className="-mt-2 text-xs text-slate-500">
+              On: an exercise here counts toward its muscle's weekly volume and can fill its slots. Off: the muscle
+              only organizes it — a chest stretch involves the chest without building it. Users can change any single
+              exercise afterwards.
+            </p>
+          </>
         )}
 
         <Toggle checked={form.enabled} onChange={(v) => set('enabled', v)} label="Enabled" />
       </div>
       <SaveBar onSave={save} onCancel={() => nav('/exercises')} onDelete={isNew ? undefined : del} saving={saving} error={error} />
     </div>
+  );
+}
+
+/// One colour choice. `color: null` is the "no override" swatch — the app
+/// paints those collections in its accent colour.
+function Swatch({ color, selected, onClick }: { color: string | null; selected: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={color ?? 'Default (accent)'}
+      style={color ? { backgroundColor: color } : undefined}
+      className={`grid size-8 place-items-center rounded-full border-2 text-[10px] font-bold ${
+        color ? 'text-white' : 'bg-white text-slate-400'
+      } ${selected ? 'border-slate-900' : 'border-transparent'}`}
+    >
+      {color ? (selected ? '✓' : '') : 'A'}
+    </button>
   );
 }

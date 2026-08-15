@@ -48,6 +48,12 @@ if (err) {
 const muscles = mu.data.map((m) => ({
   id: m.id, name: m.name, group_raw: m.group_raw, sort_order: m.sort_order,
   body_map_id: m.body_map_id, description: m.description,
+  // Collection appearance + behaviour. Null means "the app's default", which
+  // is why they're passed through as-is rather than defaulted here.
+  color_hex: m.color_hex ?? null,
+  icon_name: m.icon_name ?? null,
+  groups_by: m.groups_by ?? null,
+  exercises_train_muscle: m.exercises_train_muscle ?? null,
 }));
 const families = fa.data.map((f) => ({
   key: f.key, display_name: f.display_name, muscle_group_raw: f.muscle_group_raw, sort_order: f.sort_order,
