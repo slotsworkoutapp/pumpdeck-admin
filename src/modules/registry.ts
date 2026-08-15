@@ -10,6 +10,7 @@ import { previewModule } from './preview/module';
 import { creatorsModule } from './creators/module';
 import { moderationModule } from './moderation/module';
 import { feedbackModule } from './feedback/module';
+import { snapshotModule } from './snapshot/module';
 
 // The one place new sections are registered. Order = sidebar order.
 export const modules: AdminModule[] = [
@@ -24,5 +25,6 @@ export const modules: AdminModule[] = [
   moderationModule,
   feedbackModule,
   previewModule,
+  snapshotModule,
   // future: onboardingModule, notificationsModule, featureFlagsModule, …
 ];

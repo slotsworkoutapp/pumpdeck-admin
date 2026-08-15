@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useSnapshotStatus, shortAgo } from '../lib/snapshot';
 
 /// Sidebar pill: does the app's bundled catalog still match this dashboard?
@@ -10,23 +11,27 @@ import { useSnapshotStatus, shortAgo } from '../lib/snapshot';
 /// still worth having: the failure it catches is forgetting entirely, not
 /// lying.
 export default function SnapshotBadge({ collapsed }: { collapsed: boolean }) {
-  const { loading, stale, exportedAt, changed, marking, error, markExported } = useSnapshotStatus();
+  const { loading, stale, exportedAt, changed, error } = useSnapshotStatus();
 
   if (loading || stale === null) return null;
 
   if (collapsed) {
     return (
-      <div
+      <Link
+        to="/snapshot"
         className="flex justify-center py-2"
-        title={stale ? 'Snapshot stale — export and mark it' : 'Snapshot in line with the catalog'}
+        title={stale ? 'Snapshot stale — see what changed' : 'Snapshot in line with the catalog'}
       >
         <span className={`size-2.5 rounded-full ${stale ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-      </div>
+      </Link>
     );
   }
 
   return (
-    <div className={`mx-2 mb-2 rounded-lg border p-2.5 text-xs ${stale ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
+    <Link
+      to="/snapshot"
+      className={`mx-2 mb-2 block rounded-lg border p-2.5 text-xs ${stale ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}
+    >
       <div className="flex items-center gap-1.5">
         <span className={`size-2 shrink-0 rounded-full ${stale ? 'bg-amber-500' : 'bg-emerald-500'}`} />
         <span className={`font-bold ${stale ? 'text-amber-800' : 'text-slate-600'}`}>
@@ -48,15 +53,9 @@ export default function SnapshotBadge({ collapsed }: { collapsed: boolean }) {
         )}
       </p>
       {stale && (
-        <button
-          onClick={() => void markExported()}
-          disabled={marking}
-          className="mt-2 w-full rounded-md bg-amber-600 px-2 py-1.5 font-semibold text-white hover:opacity-90 disabled:opacity-50"
-        >
-          {marking ? 'Saving…' : 'Mark exported'}
-        </button>
+        <p className="mt-2 font-semibold text-amber-700">See what changed →</p>
       )}
       {error && <p className="mt-1 text-red-600">{error}</p>}
-    </div>
+    </Link>
   );
 }

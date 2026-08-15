@@ -93,6 +93,24 @@ export function useSnapshotStatus(): SnapshotStatus {
   return { loading, stale, exportedAt, changed, marking, error, refresh, markExported };
 }
 
+/// One row changed since the last export.
+export interface ContentChange {
+  entity: string;
+  name: string;
+  updated_at: string;
+}
+
+/// Everything edited since `since`, newest first. Inserts and updates only —
+/// a delete leaves no row to list, which is why staleness is decided by the
+/// signature (row counts included) rather than by this.
+export async function fetchChangesSince(since: Date): Promise<ContentChange[]> {
+  const { data, error } = await supabase.rpc('content_changes_since', {
+    since: since.toISOString(),
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ContentChange[];
+}
+
 /// "3 minutes ago" / "Aug 14" — short enough for a sidebar pill.
 export function shortAgo(d: Date): string {
   const mins = Math.round((Date.now() - d.getTime()) / 60000);
