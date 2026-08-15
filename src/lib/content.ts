@@ -52,6 +52,13 @@ export interface ContentExercise {
   type_raw: string;
   kind_raw: string;
   primary_muscle_id: string | null;
+  /// The exercise's collection — a `group_raw='focus'` muscle row (Mobility,
+  /// Plyometrics, Conditioning). Independent of `primary_muscle_id`: a Burpee
+  /// has a collection and no muscle, a Power Clean would have both.
+  collection_id: string | null;
+  /// False when the tagged muscles are context only (Burpee mentions quads, but
+  /// nobody counts it as leg volume). Off = no volume credit, no slot membership.
+  trains_tagged_muscle: boolean;
   secondary_muscle_ids: string[];
   additional_primary_muscle_ids: string[];
   default_rest_seconds: number;

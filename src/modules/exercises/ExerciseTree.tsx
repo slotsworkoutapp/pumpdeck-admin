@@ -31,10 +31,29 @@ export default function ExerciseTree({
   const groups = useMemo<GroupNode[]>(() => {
     const byName = (a: ContentExercise, b: ContentExercise) => a.name.localeCompare(b.name);
 
+    // `groupFilter` carries three kinds of filter. An anatomical group is
+    // matched on the group node below; the other two can't be, so they narrow
+    // the exercises up front:
+    //   'chest'        — a muscle group
+    //   'focus:<id>'   — one training type (Mobility, Plyometrics, ...)
+    //   'cardio'       — the cardio TYPE, which is a different axis: most
+    //                    cardio has no primary muscle at all, and Yoga is both
+    //                    cardio-typed and tagged Mobility.
+    const focusID = groupFilter?.startsWith('focus:') ? groupFilter.slice(6) : null;
+    const source = catalog.exercises.filter((e) => {
+      if (groupFilter === 'cardio') return e.type_raw === 'cardio';
+      if (focusID) return e.collection_id === focusID;
+      return true;
+    });
+
     // group -> muscleKey -> bucket
     const tree = new Map<string, Map<string, { name: string; sort: number; fams: Map<string, ContentExercise[]>; loose: ContentExercise[] }>>();
-    for (const e of catalog.exercises) {
-      const m = e.primary_muscle_id ? catalog.musclesById.get(e.primary_muscle_id) : undefined;
+    for (const e of source) {
+      // A muscle files it anatomically; otherwise its collection is its home,
+      // shown as a node under FOCUS. Only what has neither lands in "other".
+      const anatomical = e.primary_muscle_id ? catalog.musclesById.get(e.primary_muscle_id) : undefined;
+      const collection = !anatomical && e.collection_id ? catalog.musclesById.get(e.collection_id) : undefined;
+      const m = anatomical ?? collection;
       const group = m?.group_raw ?? 'other';
       const muscleKey = m?.id ?? '_none';
       const muscleName = m?.name ?? 'No primary muscle';
@@ -69,16 +88,28 @@ export default function ExerciseTree({
           return { id, name: b.name, sort: b.sort, families, loose: b.loose.sort(byName) };
         })
         .sort((a, b) => a.sort - b.sort);
-      return { key: g, label: cap(g), count, muscles };
+      return { key: g, label: g === 'focus' ? 'Collections' : cap(g), count, muscles };
     });
-  }, [catalog]);
+  }, [catalog, groupFilter]);
 
   const secondaryOf = (e: ContentExercise) =>
     e.secondary_muscle_ids.map((id) => catalog.musclesById.get(id)?.name).filter(Boolean).join(', ');
 
+  // Only worth showing where it isn't already the node you're standing in —
+  // i.e. on an exercise that has a muscle AND a collection.
+  const collectionOf = (e: ContentExercise) =>
+    e.primary_muscle_id && e.collection_id ? catalog.musclesById.get(e.collection_id)?.name : undefined;
+
   return (
     <div className="space-y-4">
-      {groups.filter((g) => !groupFilter || g.key === groupFilter).map((g) => (
+      {groups
+        .filter((g) => {
+          // The exercise-level filters above already narrowed things, so every
+          // remaining group is relevant; only an anatomical filter matches here.
+          if (!groupFilter || groupFilter === 'cardio' || groupFilter.startsWith('focus:')) return true;
+          return g.key === groupFilter;
+        })
+        .map((g) => (
         <div key={g.key} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-100 px-4 py-2">
             {HAS_MAP.has(g.key) && <img src={`/maps/${g.key}.svg`} alt="" className="size-7 object-contain" />}
@@ -113,7 +144,7 @@ export default function ExerciseTree({
                       </button>
                       <div className="ml-3 border-l-2 border-slate-100 pl-2">
                         {f.exercises.map((e) => (
-                          <ExRow key={e.id} e={e} secondary={secondaryOf(e)} poster={posters.get(e.id)} onOpen={onOpen} />
+                          <ExRow key={e.id} e={e} secondary={secondaryOf(e)} collection={collectionOf(e)} poster={posters.get(e.id)} onOpen={onOpen} />
                         ))}
                       </div>
                     </div>
@@ -121,7 +152,7 @@ export default function ExerciseTree({
                   {m.loose.length > 0 && (
                     <div className="ml-3 border-l-2 border-transparent pl-2">
                       {m.loose.map((e) => (
-                        <ExRow key={e.id} e={e} secondary={secondaryOf(e)} onOpen={onOpen} />
+                        <ExRow key={e.id} e={e} secondary={secondaryOf(e)} collection={collectionOf(e)} poster={posters.get(e.id)} onOpen={onOpen} />
                       ))}
                     </div>
                   )}
@@ -150,7 +181,7 @@ export function Thumb({ url }: { url?: string }) {
   );
 }
 
-function ExRow({ e, secondary, poster, onOpen }: { e: ContentExercise; secondary: string; poster?: string; onOpen: (id: string) => void }) {
+function ExRow({ e, secondary, collection, poster, onOpen }: { e: ContentExercise; secondary: string; collection?: string; poster?: string; onOpen: (id: string) => void }) {
   return (
     <button
       onClick={() => onOpen(e.id)}
@@ -161,6 +192,12 @@ function ExRow({ e, secondary, poster, onOpen }: { e: ContentExercise; secondary
       {e.kind_raw !== 'normal' && <span className="text-[10px] font-semibold uppercase text-slate-400">{kindLabel(e.kind_raw)}</span>}
       {!e.enabled && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">off</span>}
       {secondary && <span className="truncate text-xs text-slate-400">· {secondary}</span>}
+      {collection && (
+        <span className="shrink-0 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">{collection}</span>
+      )}
+      {!e.trains_tagged_muscle && (e.primary_muscle_id || e.secondary_muscle_ids.length > 0) && (
+        <span className="shrink-0 text-[10px] font-semibold uppercase text-slate-300" title="Tagged muscles don't earn volume credit">no credit</span>
+      )}
       {/* Equipment sits with the rest time on the right — it's a property of
           the exercise, not part of its name, and right-aligning keeps the
           column scannable when you're auditing what's been tagged. Untagged

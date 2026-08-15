@@ -14,16 +14,34 @@ export function validateCatalog(c: Catalog): Issue[] {
   const targetedMuscleIds = new Set<string>();
 
   for (const e of c.exercises) {
-    // Non-cardio must have a primary muscle; cardio must NOT.
-    if (e.type_raw !== 'cardio' && !e.primary_muscle_id) {
-      issues.push({ severity: 'error', entity: e.name, message: 'No primary muscle set.' });
+    // Every non-cardio exercise needs a home: a primary muscle OR a collection.
+    // Burpees and mobility work have no honest primary muscle — the collection
+    // is what files them, and demanding a muscle is what mis-filed them before.
+    if (e.type_raw !== 'cardio' && !e.primary_muscle_id && !e.collection_id) {
+      issues.push({ severity: 'error', entity: e.name, message: 'No primary muscle and no collection — nowhere to file it.' });
     }
     if (e.type_raw === 'cardio' && e.primary_muscle_id) {
       issues.push({ severity: 'warning', entity: e.name, message: 'Cardio exercise has a primary muscle (usually muscle-agnostic).' });
     }
-    // Primary muscle must resolve.
+    // Primary muscle must resolve, and must be a real muscle — a collection
+    // belongs in `collection_id`, not here.
     if (e.primary_muscle_id && !c.musclesById.has(e.primary_muscle_id)) {
       issues.push({ severity: 'error', entity: e.name, message: 'Primary muscle id does not exist in the catalog.' });
+    } else if (e.primary_muscle_id && c.musclesById.get(e.primary_muscle_id)?.group_raw === 'focus') {
+      issues.push({
+        severity: 'error',
+        entity: e.name,
+        message: `"${c.musclesById.get(e.primary_muscle_id)!.name}" is a collection, not a muscle — move it to the Collection field.`,
+      });
+    }
+    // Collection must resolve, and must actually be a collection.
+    if (e.collection_id) {
+      const col = c.musclesById.get(e.collection_id);
+      if (!col) {
+        issues.push({ severity: 'error', entity: e.name, message: 'Collection id does not exist in the catalog.' });
+      } else if (col.group_raw !== 'focus') {
+        issues.push({ severity: 'error', entity: e.name, message: `"${col.name}" is a muscle, not a collection.` });
+      }
     }
     // Secondary muscles must resolve.
     for (const id of e.secondary_muscle_ids) {

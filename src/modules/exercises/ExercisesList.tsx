@@ -6,6 +6,8 @@ import { validateCatalog } from './validate';
 import ExerciseTree from './ExerciseTree';
 import { GROUP_ORDER, GROUP_COLORS } from '../../lib/bodymap';
 
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 export default function ExercisesList() {
   const { catalog, error, loading } = useCatalog();
   const nav = useNavigate();
@@ -31,6 +33,43 @@ export default function ExercisesList() {
   }, []);
 
   const issues = useMemo(() => (catalog ? validateCatalog(catalog) : []), [catalog]);
+  /// Filter chips: the eight muscle groups, then every training type the
+  /// catalog defines, then Cardio.
+  ///
+  /// Training types were one lumped "Focus" chip, which hid what was actually
+  /// in there — Mobility, Plyometrics and Conditioning are as different from
+  /// each other as chest is from legs. They're read from the catalog rather
+  /// than listed here, so adding a fourth in the Muscles editor gives it a chip
+  /// with no code change.
+  ///
+  /// Cardio isn't a training type at all: it's an exercise TYPE, and most
+  /// cardio has no primary muscle. It earns a chip because that's how people
+  /// look for it, not because the data groups it that way.
+  const chips = useMemo(() => {
+    const FOCUS_EMOJI: Record<string, string> = {
+      Mobility: '🧘', Plyometrics: '⚡', Conditioning: '🔥',
+    };
+    const groups = GROUP_ORDER.map((g) => ({
+      value: g, label: cap(g), color: GROUP_COLORS[g] ?? '#8B5CF6', map: g, emoji: '',
+    }));
+    const focuses = (catalog?.muscles ?? [])
+      .filter((m) => m.group_raw === 'focus' && m.enabled !== false)
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((m) => ({
+        value: `focus:${m.id}`,
+        label: m.name,
+        color: m.color_hex ?? '#8B5CF6',
+        map: null as string | null,
+        emoji: FOCUS_EMOJI[m.name] ?? '✨',
+      }));
+    return [
+      ...groups,
+      ...focuses,
+      { value: 'cardio', label: 'Cardio', color: '#0EA5E9', map: null as string | null, emoji: '🏃' },
+    ];
+  }, [catalog]);
+
+
   const errorCount = issues.filter((i) => i.severity === 'error').length;
 
   if (loading) return <div className="p-8 text-slate-400">Loading catalog…</div>;
@@ -99,24 +138,24 @@ export default function ExercisesList() {
       )}
 
       <div className="mb-4 flex flex-wrap gap-2">
-        {[...GROUP_ORDER, 'focus'].map((g) => {
-              const active = groupFilter === g;
-              const color = GROUP_COLORS[g] ?? '#8B5CF6';
+        {chips.map((c) => {
+              const active = groupFilter === c.value;
+              const color = c.color;
               return (
                 <button
-                  key={g}
-                  onClick={() => setGroupFilter(active ? null : g)}
+                  key={c.value}
+                  onClick={() => setGroupFilter(active ? null : c.value)}
                   style={active ? { borderColor: color, backgroundColor: `${color}12` } : undefined}
                   className={`flex w-20 flex-col items-center rounded-xl border px-2 py-2 transition ${
                     active ? '' : 'border-slate-200 bg-white opacity-70 hover:opacity-100'
                   }`}
                 >
-                  {g === 'focus' ? (
-                    <div className="flex h-14 w-full items-center justify-center text-3xl">✨</div>
+                  {c.map ? (
+                    <img src={`/maps/${c.map}.svg`} alt="" className="h-14 w-full object-contain" />
                   ) : (
-                    <img src={`/maps/${g}.svg`} alt="" className="h-14 w-full object-contain" />
+                    <div className="flex h-14 w-full items-center justify-center text-3xl">{c.emoji}</div>
                   )}
-                  <span className="mt-1 text-xs font-semibold capitalize" style={active ? { color } : { color: '#475569' }}>{g}</span>
+                  <span className="mt-1 text-center text-xs font-semibold leading-tight" style={active ? { color } : { color: '#475569' }}>{c.label}</span>
                 </button>
               );
             })}

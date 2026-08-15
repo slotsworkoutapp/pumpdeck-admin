@@ -82,7 +82,11 @@ export default function MuscleEditor() {
         </Field>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Group">
-            <SelectField value={form.group_raw} onChange={(v) => set('group_raw', v)} options={GROUPS.map((g) => ({ value: g, label: g }))} />
+            <SelectField
+              value={form.group_raw}
+              onChange={(v) => set('group_raw', v)}
+              options={GROUPS.map((g) => ({ value: g, label: g === 'focus' ? 'collection (not a muscle)' : g }))}
+            />
           </Field>
           <Field label="Sort order">
             <NumberField value={form.sort_order} onChange={(e) => set('sort_order', parseInt(e.target.value || '0', 10))} />

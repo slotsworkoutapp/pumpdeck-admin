@@ -21,6 +21,8 @@ const blank: Omit<ContentExercise, 'id'> = {
   type_raw: 'reps',
   kind_raw: 'normal',
   primary_muscle_id: null,
+  collection_id: null,
+  trains_tagged_muscle: true,
   secondary_muscle_ids: [],
   additional_primary_muscle_ids: [],
   default_rest_seconds: 90,
@@ -54,8 +56,20 @@ export default function ExerciseEditor() {
     }
   }, [catalog, id, isNew]);
 
+  // Anatomical muscles only. Collections (Mobility, Plyometrics, Conditioning)
+  // live in `content_muscles` with group_raw='focus' because they share the
+  // tagging machinery — but they are NOT muscles, and offering them here is
+  // what produced "primary muscle: Plyometrics" rows in the first place.
   const muscleOptions = useMemo(
-    () => (catalog?.muscles ?? []).map((m) => ({ value: m.id, label: m.name })),
+    () => (catalog?.muscles ?? []).filter((m) => m.group_raw !== 'focus').map((m) => ({ value: m.id, label: m.name })),
+    [catalog]
+  );
+  const collectionOptions = useMemo(
+    () =>
+      (catalog?.muscles ?? [])
+        .filter((m) => m.group_raw === 'focus')
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((m) => ({ value: m.id, label: m.name })),
     [catalog]
   );
   const familyOptions = useMemo(
@@ -78,6 +92,7 @@ export default function ExerciseEditor() {
       ...form,
       name: form.name.trim(),
       primary_muscle_id: form.primary_muscle_id || null,
+      collection_id: form.collection_id || null,
       movement_family_key: form.movement_family_key || null,
       equipment: form.equipment || null,
       description: form.description || null,
@@ -132,9 +147,36 @@ export default function ExerciseEditor() {
           />
         </Field>
 
-        <Field label="Primary muscle" hint={form.type_raw === 'cardio' ? 'Cardio is usually muscle-agnostic — leave blank.' : undefined}>
+        <Field
+          label="Primary muscle"
+          hint={
+            form.type_raw === 'cardio'
+              ? 'Cardio is usually muscle-agnostic — leave blank.'
+              : 'Anatomical muscles only. A Burpee has no honest primary muscle — leave it blank and give it a collection.'
+          }
+        >
           <SelectField value={form.primary_muscle_id ?? ''} onChange={(v) => set('primary_muscle_id', v || null)} options={muscleOptions} placeholder="— none —" />
         </Field>
+
+        <Field
+          label="Collection"
+          hint="Where it's filed when a muscle isn't the point — Mobility, Plyometrics, Conditioning. Independent of the muscle: an exercise can have both, either, or neither."
+        >
+          <SelectField
+            value={form.collection_id ?? ''}
+            onChange={(v) => set('collection_id', v || null)}
+            options={collectionOptions}
+            placeholder="— none —"
+          />
+        </Field>
+
+        {(form.primary_muscle_id || form.secondary_muscle_ids.length > 0) && (
+          <Toggle
+            checked={form.trains_tagged_muscle}
+            onChange={(v) => set('trains_tagged_muscle', v)}
+            label="Trains its muscles (counts toward volume + fills muscle slots)"
+          />
+        )}
 
         <Field label="Secondary muscles">
           <MultiSelect selected={form.secondary_muscle_ids} onChange={(v) => set('secondary_muscle_ids', v)} options={muscleOptions} />
