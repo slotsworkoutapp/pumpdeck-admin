@@ -105,3 +105,6 @@ console.log(`✓ ${muscles.length} muscles · ${families.length} families · ${e
 console.log(`✓ ${splits.length} splits · ${recipes.length} recipes · ${goals.length} goals · ${lockedPrograms.length} locked programs`);
 console.log(`✓ wrote ${APP_SNAPSHOT}`);
 console.log('  Rebuild the app to bundle it — new users will seed from this.');
+// The dashboard's staleness badge can't observe this script running (it has no
+// write access on the anon key), so close the loop by hand while you're here.
+console.log('  Then click "Mark exported" in the dashboard sidebar to clear the stale badge.');

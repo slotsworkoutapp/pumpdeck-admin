@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { modules } from '../modules/registry';
 import { useAuth } from '../lib/auth';
+import SnapshotBadge from './SnapshotBadge';
 
 export default function Shell() {
   const { session, signOut } = useAuth();
@@ -39,6 +40,7 @@ export default function Shell() {
             </NavLink>
           ))}
         </nav>
+        <SnapshotBadge collapsed={collapsed} />
         <div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400">
           {!collapsed && <div className="truncate">{session?.user.email}</div>}
           <button onClick={signOut} className="mt-1 font-semibold text-slate-500 hover:text-slate-900" title="Sign out">
