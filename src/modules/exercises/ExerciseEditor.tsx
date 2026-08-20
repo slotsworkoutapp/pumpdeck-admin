@@ -286,6 +286,36 @@ export default function ExerciseEditor() {
         </Field>
         )}
 
+        {/* Directly under the primary muscle, because that's the question it
+            continues: "and is there a second one?". Folded away because it's a
+            genuine rarity — a handful of dual-movers in the whole catalog — and
+            a full-height muscle grid sitting open for a field almost nobody
+            fills pushes the fields people DO fill off the screen.
+
+            Not asked for warm-ups and stretches at all: a second "home" muscle
+            is a primary-vs-secondary idea, and they don't have one. */}
+        {!isStretchy && (
+          <div className="rounded-lg border border-slate-200 p-3">
+            <Toggle
+              checked={showAdditionalPrimaries}
+              onChange={setShowAdditionalPrimaries}
+              label="This is a dual-mover (has a second home muscle)"
+            />
+            {showAdditionalPrimaries && (
+              <div className="mt-3">
+                <Field label="Additional primary muscles" hint="Extra 'home' muscles for dual-movers (e.g. Hammer Curl → Biceps). Usually empty.">
+                  <MultiSelect
+                    selected={form.additional_primary_muscle_ids}
+                    onChange={(v) => set('additional_primary_muscle_ids', v)}
+                    options={muscleOptions}
+                    mapGroup={groupOfMuscle}
+                  />
+                </Field>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Warm-ups and stretches only. Nobody asks for a side-delt stretch —
             they want a shoulder stretch, and the group is the honest filing. */}
         {isStretchy && (
@@ -362,36 +392,6 @@ export default function ExerciseEditor() {
             mapGroup={groupOfMuscle}
           />
         </Field>
-
-        {/* A second "home" muscle is a primary-vs-secondary idea, and warm-ups
-            and stretches don't have one — the field above already asks the only
-            question they answer.
-
-            Folded away for everything else because it's a genuine rarity: a
-            handful of dual-movers across the whole catalog. A full-height muscle
-            grid sitting open for a field almost nobody fills pushes the fields
-            people DO fill off the screen. */}
-        {!isStretchy && (
-          <div className="rounded-lg border border-slate-200 p-3">
-            <Toggle
-              checked={showAdditionalPrimaries}
-              onChange={setShowAdditionalPrimaries}
-              label="This is a dual-mover (has a second home muscle)"
-            />
-            {showAdditionalPrimaries && (
-              <div className="mt-3">
-                <Field label="Additional primary muscles" hint="Extra 'home' muscles for dual-movers (e.g. Hammer Curl → Biceps). Usually empty.">
-                  <MultiSelect
-                    selected={form.additional_primary_muscle_ids}
-                    onChange={(v) => set('additional_primary_muscle_ids', v)}
-                    options={muscleOptions}
-                    mapGroup={groupOfMuscle}
-                  />
-                </Field>
-              </div>
-            )}
-          </div>
-        )}
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Default rest (seconds)">
