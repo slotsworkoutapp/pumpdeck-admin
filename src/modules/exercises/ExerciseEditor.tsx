@@ -98,27 +98,48 @@ export default function ExerciseEditor() {
         .map((m) => ({ value: m.id, label: m.name })),
     [catalog]
   );
-  /// Variations for the muscle you picked, not all 55.
+  /// Variations for the muscle you picked — Upper Chest offers Incline Press
+  /// and Incline Fly, not all eight chest families and certainly not all 55.
   ///
-  /// A family belongs to a muscle GROUP, so choosing Upper Chest narrows to the
-  /// chest families — the app scopes its own variation picker the same way,
-  /// by the primary muscle, for the same reason: a variation is a version of
-  /// one movement, and "Calf Raise" is never a version of an incline press.
+  /// Derived from the exercises rather than the family's own group, because
+  /// the group is too coarse to be useful: Fly, Press, Decline Press and the
+  /// rest are all "chest", but a decline press is not a version of an incline
+  /// one. A family is offered when some exercise with THIS primary muscle is
+  /// already in it, which is the same thing the app's picker computes — it
+  /// lists exercises sharing your primary muscle and joins whichever family you
+  /// pick.
   ///
-  /// Two deliberate escapes. With no primary muscle chosen there's nothing to
-  /// narrow BY, so everything shows rather than nothing. And a family the row
-  /// already holds always stays listed, even out of group — hiding the current
-  /// value would make the dropdown display a blank where a real answer is
-  /// stored, and saving would then quietly clear it.
+  /// Three deliberate escapes:
+  ///   - no primary muscle: nothing to narrow BY, so show everything
+  ///   - a muscle with no families yet: fall back to its group, or the dropdown
+  ///     would be empty and the first variation for a muscle unassignable
+  ///   - the family already stored always stays listed, even out of scope.
+  ///     Hiding the current value leaves the dropdown blank over a real answer,
+  ///     and saving would then quietly clear it.
   const familyOptions = useMemo(() => {
     const all = (catalog?.families ?? []).map((f) => ({
       value: f.key,
       label: f.display_name,
       group: f.muscle_group_raw,
     }));
-    const group = form.primary_muscle_id ? groupOfMuscle(form.primary_muscle_id) : null;
-    if (!group) return all;
-    return all.filter((f) => f.group === group || f.value === form.movement_family_key);
+    const muscleID = form.primary_muscle_id;
+    if (!muscleID) return all;
+
+    const reachable = new Set(
+      (catalog?.exercises ?? [])
+        .filter((e) => e.primary_muscle_id === muscleID && e.movement_family_key)
+        .map((e) => e.movement_family_key as string)
+    );
+    const scoped = reachable.size
+      ? all.filter((f) => reachable.has(f.value))
+      : all.filter((f) => f.group === groupOfMuscle(muscleID));
+
+    const current = form.movement_family_key;
+    if (current && !scoped.some((f) => f.value === current)) {
+      const held = all.find((f) => f.value === current);
+      if (held) return [held, ...scoped];
+    }
+    return scoped;
   }, [catalog, form.primary_muscle_id, form.movement_family_key, groupOfMuscle]);
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
@@ -309,7 +330,7 @@ export default function ExerciseEditor() {
               label="Variation (movement family)"
               hint={
                 form.primary_muscle_id
-                  ? 'Exercises sharing a family are interchangeable in a program. Narrowed to this muscle\u2019s group.'
+                  ? 'Exercises sharing a family are interchangeable in a program. Narrowed to the families this muscle already has exercises in.'
                   : 'Exercises sharing a family are interchangeable in a program. Pick a primary muscle to narrow this list.'
               }
             >
