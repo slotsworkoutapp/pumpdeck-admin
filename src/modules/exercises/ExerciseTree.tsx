@@ -43,9 +43,16 @@ export default function ExerciseTree({
     //                    cardio-typed and tagged Mobility.
     const focusID = groupFilter?.startsWith('focus:') ? groupFilter.slice(6) : null;
     const source = catalog.exercises.filter((e) => {
-      // `isAvailable(as:)` in the app: an exercise offered as two kinds answers
-      // to both, so a Warm-up & Stretch shows under either filter.
-      if (kindFilter && e.kind_raw !== kindFilter && e.also_kind_raw !== kindFilter) return false;
+      // The pair is a narrowing, not a kind: only exercises carrying a second
+      // kind at all. Checked before the rule below, which would otherwise never
+      // match a compound value against a single column.
+      if (kindFilter === 'warmup+cooldown') {
+        if (!e.also_kind_raw) return false;
+      } else if (kindFilter && e.kind_raw !== kindFilter && e.also_kind_raw !== kindFilter) {
+        // `isAvailable(as:)` in the app: an exercise offered as two kinds
+        // answers to both, so a Warm-up & Stretch shows under either filter.
+        return false;
+      }
       if (groupFilter === 'cardio') return e.type_raw === 'cardio';
       if (focusID) return e.collection_id === focusID;
       return true;

@@ -16,6 +16,11 @@ const KIND_FILTERS: { value: string; label: string }[] = [
   { value: 'normal', label: 'Workout' },
   { value: 'warmup', label: 'Warm-up' },
   { value: 'cooldown', label: 'Stretch' },
+  // Not a fourth kind — a narrowing. An exercise tagged both already appears
+  // under Warm-up AND under Stretch (the filter reads also_kind_raw too), so
+  // nothing here is otherwise hidden. This is the only way to see WHICH ones
+  // carry the pair, which is the thing you'd audit it for.
+  { value: 'warmup+cooldown', label: 'Warm-up & Stretch' },
 ];
 
 export default function ExercisesList() {
