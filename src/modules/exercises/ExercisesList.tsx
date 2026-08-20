@@ -8,10 +8,11 @@ import { GROUP_ORDER, GROUP_COLORS } from '../../lib/bodymap';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/// Null is "all", so the row reads as a filter you turn ON rather than a mode
-/// you're always in. 'cooldown' shows as Stretch — same rename as the app.
-const KIND_FILTERS: { value: string | null; label: string }[] = [
-  { value: null, label: 'All' },
+/// Always exactly one — there is no "all". Every exercise is a workout, a
+/// warm-up or a stretch, so an unfiltered list is three unrelated things
+/// interleaved rather than a useful view of any of them. 'cooldown' shows as
+/// Stretch, the same rename the app and the editor use.
+const KIND_FILTERS: { value: string; label: string }[] = [
   { value: 'normal', label: 'Workout' },
   { value: 'warmup', label: 'Warm-up' },
   { value: 'cooldown', label: 'Stretch' },
@@ -22,9 +23,9 @@ export default function ExercisesList() {
   const nav = useNavigate();
   const [showIssues, setShowIssues] = useState(false);
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
-  /// Null means every kind. Values match kind_raw; 'cooldown' shows as
-  /// "Stretch", the same rename the app and the editor use.
-  const [kindFilter, setKindFilter] = useState<string | null>(null);
+  /// Opens on Workout: it's the overwhelming majority of the catalog and what
+  /// you're looking at unless you came here specifically for the others.
+  const [kindFilter, setKindFilter] = useState<string>('normal');
   const [posters, setPosters] = useState<Map<string, string>>(new Map());
 
   // Signed thumbnail URLs keyed by exercise id, shown as a square in the list.
@@ -159,7 +160,8 @@ export default function ExercisesList() {
           return (
             <button
               key={k.label}
-              onClick={() => setKindFilter(active ? null : k.value)}
+              // No toggling off — that would be "all" by another route.
+              onClick={() => setKindFilter(k.value)}
               className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
                 active ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
