@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { GroupMap } from './GroupMap';
 
 // Shared form primitives — reused by every module's editors.
 
@@ -60,14 +61,22 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
 }
 
 // A checklist multi-select (used for secondary muscles). Compact + scrollable.
+//
+// `mapGroup` puts the group's silhouette on each chip. Only GROUP art exists
+// (public/maps holds eight files, one per group) — there are no per-head
+// drawings — so a muscle shows the map of the group it belongs to. That's still
+// worth having: it's the difference between reading a list of names and seeing
+// where on the body you're tagging.
 export function MultiSelect({
   selected,
   onChange,
   options,
+  mapGroup,
 }: {
   selected: string[];
   onChange: (v: string[]) => void;
   options: { value: string; label: string; group?: string }[];
+  mapGroup?: (value: string) => string | null | undefined;
 }) {
   const set = new Set(selected);
   const toggle = (v: string) => {
@@ -83,10 +92,11 @@ export function MultiSelect({
             key={o.value}
             type="button"
             onClick={() => toggle(o.value)}
-            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-              set.has(o.value) ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
+            className={`flex items-center gap-1.5 rounded-full py-1 pr-2.5 text-xs font-semibold ${
+              mapGroup ? 'pl-1' : 'pl-2.5'
+            } ${set.has(o.value) ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
           >
+            {mapGroup && <GroupMap group={mapGroup(o.value)} className="size-5 shrink-0 object-contain" />}
             {o.label}
           </button>
         ))}

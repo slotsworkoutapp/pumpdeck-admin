@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useCatalog, EQUIPMENT_OPTIONS, type ContentExercise } from '../../lib/content';
 import { Field, TextField, NumberField, TextArea, SelectField, MultiSelect, Toggle, SaveBar } from '../../components/ui';
 import ExerciseMedia from './ExerciseMedia';
+import { GroupMap } from '../../components/GroupMap';
 
 const NAMESPACE = '9e1b7c42-1f3a-4d58-9a2e-6c0b5d8f44a1'; // == SeedID namespace
 
@@ -68,6 +69,20 @@ export default function ExerciseEditor() {
     () => (catalog?.muscles ?? []).filter((m) => m.group_raw !== 'focus').map((m) => ({ value: m.id, label: m.name })),
     [catalog]
   );
+  /// Which group a muscle belongs to — drives the silhouette on each chip.
+  const groupOfMuscle = useMemo(() => {
+    const m = new Map((catalog?.muscles ?? []).map((x) => [x.id, x.group_raw]));
+    return (id: string) => m.get(id) ?? null;
+  }, [catalog]);
+
+  /// Warm-ups and stretches only tag LEG heads — every other group stops at the
+  /// group. Offering the rest was the form contradicting its own hint, and it's
+  /// how the catalog ended up with a chest stretch filed against Mid Chest.
+  const legMuscleOptions = useMemo(
+    () => (catalog?.muscles ?? []).filter((m) => m.group_raw === 'legs').map((m) => ({ value: m.id, label: m.name })),
+    [catalog]
+  );
+
   const collectionOptions = useMemo(
     () =>
       (catalog?.muscles ?? [])
@@ -102,6 +117,7 @@ export default function ExerciseEditor() {
       // A stretch has no primary and no additional primaries, whatever a row
       // saved before this rule may still be carrying.
       primary_muscle_id: isStretchy ? null : form.primary_muscle_id || null,
+      movement_family_key: isStretchy ? null : form.movement_family_key || null,
       additional_primary_muscle_ids: isStretchy ? [] : form.additional_primary_muscle_ids,
       // The array is what the app reads. The old single column is kept in sync
       // with its first element so a client built before the array still files
@@ -109,7 +125,6 @@ export default function ExerciseEditor() {
       primary_groups_raw: isStretchy ? form.primary_groups_raw : [],
       primary_group_raw: isStretchy ? (form.primary_groups_raw[0] ?? null) : null,
       collection_id: form.collection_id || null,
-      movement_family_key: form.movement_family_key || null,
       equipment: form.equipment || null,
       description: form.description || null,
       notes: form.notes || null,
@@ -176,17 +191,25 @@ export default function ExerciseEditor() {
               : 'Anatomical muscles only. A Burpee has no honest primary muscle — leave it blank and give it a collection.'
           }
         >
-          <SelectField
-            value={form.primary_muscle_id ?? ''}
-            onChange={(v) => {
-              set('primary_muscle_id', v || null);
-              // A group is a coarser answer to the same question — the app
-              // treats them as mutually exclusive, so the dashboard must too.
-              if (v) set('primary_group_raw', null);
-            }}
-            options={muscleOptions}
-            placeholder="— none —"
-          />
+          {/* A native <select> can't put art in its options, so the map sits
+              beside it and follows the choice. */}
+          <div className="flex items-center gap-2">
+            <GroupMap
+              group={form.primary_muscle_id ? groupOfMuscle(form.primary_muscle_id) : null}
+              className="size-8 shrink-0 object-contain"
+            />
+            <SelectField
+              value={form.primary_muscle_id ?? ''}
+              onChange={(v) => {
+                set('primary_muscle_id', v || null);
+                // A group is a coarser answer to the same question — the app
+                // treats them as mutually exclusive, so the dashboard must too.
+                if (v) set('primary_groups_raw', []);
+              }}
+              options={muscleOptions}
+              placeholder="— none —"
+            />
+          </div>
         </Field>
         )}
 
@@ -204,6 +227,7 @@ export default function ExerciseEditor() {
                 if (v.length) set('primary_muscle_id', null);
               }}
               options={MUSCLE_GROUPS.map((g) => ({ value: g, label: cap(g) }))}
+              mapGroup={(g) => g}
             />
           </Field>
         )}
@@ -236,7 +260,12 @@ export default function ExerciseEditor() {
               : undefined
           }
         >
-          <MultiSelect selected={form.secondary_muscle_ids} onChange={(v) => set('secondary_muscle_ids', v)} options={muscleOptions} />
+          <MultiSelect
+            selected={form.secondary_muscle_ids}
+            onChange={(v) => set('secondary_muscle_ids', v)}
+            options={isStretchy ? legMuscleOptions : muscleOptions}
+            mapGroup={groupOfMuscle}
+          />
         </Field>
 
         {/* A second "home" muscle is a primary-vs-secondary idea, and warm-ups
@@ -244,13 +273,24 @@ export default function ExerciseEditor() {
             question they answer. */}
         {!isStretchy && (
         <Field label="Additional primary muscles" hint="Extra 'home' muscles for dual-movers (e.g. Hammer Curl → Biceps). Usually empty.">
-          <MultiSelect selected={form.additional_primary_muscle_ids} onChange={(v) => set('additional_primary_muscle_ids', v)} options={muscleOptions} />
+          <MultiSelect
+            selected={form.additional_primary_muscle_ids}
+            onChange={(v) => set('additional_primary_muscle_ids', v)}
+            options={muscleOptions}
+            mapGroup={groupOfMuscle}
+          />
         </Field>
         )}
 
+        {/* Hidden for warm-ups and stretches, matching the app: a variation is
+            a version of ONE movement, which is a workout-set idea. A stretch is
+            filed at group grain and slotted at group grain, so a third grain in
+            between is a question with nowhere to land. */}
+        {!isStretchy && (
         <Field label="Variation (movement family)" hint="Exercises sharing a family are interchangeable in a program.">
           <SelectField value={form.movement_family_key ?? ''} onChange={(v) => set('movement_family_key', v || null)} options={familyOptions} placeholder="— none —" />
         </Field>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Default rest (seconds)">
