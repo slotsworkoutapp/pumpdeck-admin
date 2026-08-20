@@ -8,11 +8,23 @@ import { GROUP_ORDER, GROUP_COLORS } from '../../lib/bodymap';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/// Null is "all", so the row reads as a filter you turn ON rather than a mode
+/// you're always in. 'cooldown' shows as Stretch — same rename as the app.
+const KIND_FILTERS: { value: string | null; label: string }[] = [
+  { value: null, label: 'All' },
+  { value: 'normal', label: 'Workout' },
+  { value: 'warmup', label: 'Warm-up' },
+  { value: 'cooldown', label: 'Stretch' },
+];
+
 export default function ExercisesList() {
   const { catalog, error, loading } = useCatalog();
   const nav = useNavigate();
   const [showIssues, setShowIssues] = useState(false);
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
+  /// Null means every kind. Values match kind_raw; 'cooldown' shows as
+  /// "Stretch", the same rename the app and the editor use.
+  const [kindFilter, setKindFilter] = useState<string | null>(null);
   const [posters, setPosters] = useState<Map<string, string>>(new Map());
 
   // Signed thumbnail URLs keyed by exercise id, shown as a square in the list.
@@ -137,6 +149,27 @@ export default function ExercisesList() {
         </div>
       )}
 
+      {/* A second axis, not more chips in the same row. Group answers "where on
+          the body", kind answers "when in the session" — combining them is the
+          question worth asking here: are there any chest warm-ups at all? */}
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Type</span>
+        {KIND_FILTERS.map((k) => {
+          const active = kindFilter === k.value;
+          return (
+            <button
+              key={k.label}
+              onClick={() => setKindFilter(active ? null : k.value)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                active ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {k.label}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="mb-4 flex flex-wrap gap-2">
         {chips.map((c) => {
               const active = groupFilter === c.value;
@@ -164,6 +197,7 @@ export default function ExercisesList() {
             catalog={catalog}
             posters={posters}
             groupFilter={groupFilter}
+            kindFilter={kindFilter}
             onOpen={(id) => nav(`/exercises/${id}`)}
             onOpenMuscle={(id) => nav(`/muscles/${id}`)}
             onOpenVariation={(key) => nav(`/variations/${key}`)}

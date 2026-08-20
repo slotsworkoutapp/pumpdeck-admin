@@ -17,6 +17,7 @@ export default function ExerciseTree({
   catalog,
   posters,
   groupFilter,
+  kindFilter,
   onOpen,
   onOpenMuscle,
   onOpenVariation,
@@ -24,6 +25,7 @@ export default function ExerciseTree({
   catalog: Catalog;
   posters: Map<string, string>;
   groupFilter?: string | null;
+  kindFilter?: string | null;
   onOpen: (id: string) => void;
   onOpenMuscle: (id: string) => void;
   onOpenVariation: (key: string) => void;
@@ -41,6 +43,9 @@ export default function ExerciseTree({
     //                    cardio-typed and tagged Mobility.
     const focusID = groupFilter?.startsWith('focus:') ? groupFilter.slice(6) : null;
     const source = catalog.exercises.filter((e) => {
+      // `isAvailable(as:)` in the app: an exercise offered as two kinds answers
+      // to both, so a Warm-up & Stretch shows under either filter.
+      if (kindFilter && e.kind_raw !== kindFilter && e.also_kind_raw !== kindFilter) return false;
       if (groupFilter === 'cardio') return e.type_raw === 'cardio';
       if (focusID) return e.collection_id === focusID;
       return true;
@@ -54,20 +59,34 @@ export default function ExerciseTree({
       const anatomical = e.primary_muscle_id ? catalog.musclesById.get(e.primary_muscle_id) : undefined;
       const collection = !anatomical && e.collection_id ? catalog.musclesById.get(e.collection_id) : undefined;
       const m = anatomical ?? collection;
-      const group = m?.group_raw ?? 'other';
       const muscleKey = m?.id ?? '_none';
       const muscleName = m?.name ?? 'No primary muscle';
       const muscleSort = m?.sort_order ?? 999;
 
-      if (!tree.has(group)) tree.set(group, new Map());
-      const groupMap = tree.get(group)!;
-      if (!groupMap.has(muscleKey)) groupMap.set(muscleKey, { name: muscleName, sort: muscleSort, fams: new Map(), loose: [] });
-      const bucket = groupMap.get(muscleKey)!;
+      // Warm-ups and stretches have no primary muscle — they file by GROUP —
+      // so this used to put every one of them under Collections and nowhere
+      // else. Clicking Chest could never surface a chest stretch, which is
+      // exactly the thing you'd open the group to check.
+      //
+      // They appear under each group they file under, deliberately: a doorway
+      // chest stretch really is chest AND shoulders, and showing it once under
+      // whichever came first would answer "are there chest stretches?" wrongly
+      // for one of them.
+      const filedGroups = e.primary_groups_raw?.length
+        ? e.primary_groups_raw
+        : [m?.group_raw ?? 'other'];
 
-      if (e.movement_family_key) {
-        if (!bucket.fams.has(e.movement_family_key)) bucket.fams.set(e.movement_family_key, []);
-        bucket.fams.get(e.movement_family_key)!.push(e);
-      } else bucket.loose.push(e);
+      for (const group of filedGroups) {
+        if (!tree.has(group)) tree.set(group, new Map());
+        const groupMap = tree.get(group)!;
+        if (!groupMap.has(muscleKey)) groupMap.set(muscleKey, { name: muscleName, sort: muscleSort, fams: new Map(), loose: [] });
+        const bucket = groupMap.get(muscleKey)!;
+
+        if (e.movement_family_key) {
+          if (!bucket.fams.has(e.movement_family_key)) bucket.fams.set(e.movement_family_key, []);
+          bucket.fams.get(e.movement_family_key)!.push(e);
+        } else bucket.loose.push(e);
+      }
     }
 
     return GROUP_ORDER.filter((g) => tree.has(g)).map((g) => {
@@ -90,7 +109,7 @@ export default function ExerciseTree({
         .sort((a, b) => a.sort - b.sort);
       return { key: g, label: g === 'focus' ? 'Collections' : cap(g), count, muscles };
     });
-  }, [catalog, groupFilter]);
+  }, [catalog, groupFilter, kindFilter]);
 
   const secondaryOf = (e: ContentExercise) =>
     e.secondary_muscle_ids.map((id) => catalog.musclesById.get(id)?.name).filter(Boolean).join(', ');
