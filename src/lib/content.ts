@@ -65,10 +65,14 @@ export interface ContentExercise {
   /// False when the tagged muscles are context only (Burpee mentions quads, but
   /// nobody counts it as leg volume). Off = no volume credit, no slot membership.
   trains_tagged_muscle: boolean;
-  /// A muscle GROUP this is filed under instead of one muscle — 'legs',
-  /// 'shoulders'. For warm-ups and stretches, where naming a single head is
-  /// false precision. Set INSTEAD of primary_muscle_id.
+  /// Legacy single-group column. Superseded by `primary_groups_raw`, and kept
+  /// in sync with its first element for clients built before the array.
   primary_group_raw: string | null;
+  /// Muscle GROUPS this is filed under instead of one muscle — 'legs',
+  /// 'shoulders'. For warm-ups and stretches, where naming a single head is
+  /// false precision. Several is normal and honest: a doorway chest stretch is
+  /// chest AND shoulders. Set INSTEAD of primary_muscle_id.
+  primary_groups_raw: string[];
   secondary_muscle_ids: string[];
   additional_primary_muscle_ids: string[];
   default_rest_seconds: number;

@@ -24,6 +24,7 @@ const blank: Omit<ContentExercise, 'id'> = {
   kind_raw: 'normal',
   primary_muscle_id: null,
   primary_group_raw: null,
+  primary_groups_raw: [],
   collection_id: null,
   trains_tagged_muscle: true,
   secondary_muscle_ids: [],
@@ -102,7 +103,11 @@ export default function ExerciseEditor() {
       // saved before this rule may still be carrying.
       primary_muscle_id: isStretchy ? null : form.primary_muscle_id || null,
       additional_primary_muscle_ids: isStretchy ? [] : form.additional_primary_muscle_ids,
-      primary_group_raw: form.primary_group_raw || null,
+      // The array is what the app reads. The old single column is kept in sync
+      // with its first element so a client built before the array still files
+      // the exercise somewhere sensible rather than nowhere.
+      primary_groups_raw: isStretchy ? form.primary_groups_raw : [],
+      primary_group_raw: isStretchy ? (form.primary_groups_raw[0] ?? null) : null,
       collection_id: form.collection_id || null,
       movement_family_key: form.movement_family_key || null,
       equipment: form.equipment || null,
@@ -189,17 +194,16 @@ export default function ExerciseEditor() {
             they want a shoulder stretch, and the group is the honest filing. */}
         {isStretchy && (
           <Field
-            label="Muscle group"
-            hint="Where this is filed. Naming one head would be false precision — nobody asks for a lower-chest warm-up. Fills that group's stretch/warm-up slots."
+            label="Muscle groups"
+            hint="Where this is filed, and the only muscle question these are asked. Naming one head would be false precision — nobody asks for a lower-chest warm-up. Pick every group it genuinely reaches: a doorway chest stretch is chest AND shoulders."
           >
-            <SelectField
-              value={form.primary_group_raw ?? ''}
+            <MultiSelect
+              selected={form.primary_groups_raw}
               onChange={(v) => {
-                set('primary_group_raw', v || null);
-                if (v) set('primary_muscle_id', null);
+                set('primary_groups_raw', v);
+                if (v.length) set('primary_muscle_id', null);
               }}
               options={MUSCLE_GROUPS.map((g) => ({ value: g, label: cap(g) }))}
-              placeholder="— none —"
             />
           </Field>
         )}
@@ -228,7 +232,7 @@ export default function ExerciseEditor() {
           label={isStretchy ? 'Muscles it reaches' : 'Secondary muscles'}
           hint={
             isStretchy
-              ? "Which muscles this reaches — no primary/secondary split, since warm-ups and stretches earn no volume either way. LEGS heads are kept as-is (a quad stretch and a calf stretch are different things people ask for). Heads in any OTHER group are collapsed to that group by the app, which is also how an exercise records reaching more than one: a doorway chest stretch tagged Front Delt is filed under chest AND shoulders."
+              ? "Legs only, and optional. A quad stretch and a calf stretch really are different things people ask for, so leg heads fill per-muscle stretch slots. Every other group stops at the group above — tag Shoulders there, not Rear Delt."
               : undefined
           }
         >
