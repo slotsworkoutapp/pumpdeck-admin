@@ -98,6 +98,14 @@ export default function ExerciseEditor() {
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
 
+  /// Additional primaries are folded away unless the row already has some —
+  /// hiding a field that HOLDS a value would make the form lie about what it's
+  /// about to save.
+  const [showAdditionalPrimaries, setShowAdditionalPrimaries] = useState(false);
+  useEffect(() => {
+    if (form.additional_primary_muscle_ids.length > 0) setShowAdditionalPrimaries(true);
+  }, [form.additional_primary_muscle_ids.length]);
+
   /// Warm-ups and stretches file by GROUP and list the muscles they reach —
   /// the app collapsed its two muscle rows into one for exactly these.
   const isStretchy = form.kind_raw === 'warmup' || form.kind_raw === 'cooldown';
@@ -232,17 +240,32 @@ export default function ExerciseEditor() {
           </Field>
         )}
 
-        <Field
-          label="Collection"
-          hint="Where it's filed when a muscle isn't the point — Mobility, Plyometrics, Conditioning. Independent of the muscle: an exercise can have both, either, or neither."
-        >
-          <SelectField
-            value={form.collection_id ?? ''}
-            onChange={(v) => set('collection_id', v || null)}
-            options={collectionOptions}
-            placeholder="— none —"
-          />
-        </Field>
+        {/* Paired: both answer "what else is this filed as", both are a single
+            dropdown, and both are usually empty. Side by side they read as one
+            optional row instead of two more things to scroll past. */}
+        <div className={isStretchy ? '' : 'grid grid-cols-2 gap-4'}>
+          <Field
+            label="Collection"
+            hint="Where it's filed when a muscle isn't the point — Mobility, Plyometrics, Conditioning. Independent of the muscle: an exercise can have both, either, or neither."
+          >
+            <SelectField
+              value={form.collection_id ?? ''}
+              onChange={(v) => set('collection_id', v || null)}
+              options={collectionOptions}
+              placeholder="— none —"
+            />
+          </Field>
+
+          {/* Hidden for warm-ups and stretches, matching the app: a variation is
+              a version of ONE movement, which is a workout-set idea. A stretch is
+              filed at group grain and slotted at group grain, so a third grain in
+              between is a question with nowhere to land. */}
+          {!isStretchy && (
+            <Field label="Variation (movement family)" hint="Exercises sharing a family are interchangeable in a program.">
+              <SelectField value={form.movement_family_key ?? ''} onChange={(v) => set('movement_family_key', v || null)} options={familyOptions} placeholder="— none —" />
+            </Field>
+          )}
+        </div>
 
         {(form.primary_muscle_id || form.secondary_muscle_ids.length > 0) && (
           <Toggle
@@ -270,26 +293,32 @@ export default function ExerciseEditor() {
 
         {/* A second "home" muscle is a primary-vs-secondary idea, and warm-ups
             and stretches don't have one — the field above already asks the only
-            question they answer. */}
-        {!isStretchy && (
-        <Field label="Additional primary muscles" hint="Extra 'home' muscles for dual-movers (e.g. Hammer Curl → Biceps). Usually empty.">
-          <MultiSelect
-            selected={form.additional_primary_muscle_ids}
-            onChange={(v) => set('additional_primary_muscle_ids', v)}
-            options={muscleOptions}
-            mapGroup={groupOfMuscle}
-          />
-        </Field>
-        )}
+            question they answer.
 
-        {/* Hidden for warm-ups and stretches, matching the app: a variation is
-            a version of ONE movement, which is a workout-set idea. A stretch is
-            filed at group grain and slotted at group grain, so a third grain in
-            between is a question with nowhere to land. */}
+            Folded away for everything else because it's a genuine rarity: a
+            handful of dual-movers across the whole catalog. A full-height muscle
+            grid sitting open for a field almost nobody fills pushes the fields
+            people DO fill off the screen. */}
         {!isStretchy && (
-        <Field label="Variation (movement family)" hint="Exercises sharing a family are interchangeable in a program.">
-          <SelectField value={form.movement_family_key ?? ''} onChange={(v) => set('movement_family_key', v || null)} options={familyOptions} placeholder="— none —" />
-        </Field>
+          <div className="rounded-lg border border-slate-200 p-3">
+            <Toggle
+              checked={showAdditionalPrimaries}
+              onChange={setShowAdditionalPrimaries}
+              label="This is a dual-mover (has a second home muscle)"
+            />
+            {showAdditionalPrimaries && (
+              <div className="mt-3">
+                <Field label="Additional primary muscles" hint="Extra 'home' muscles for dual-movers (e.g. Hammer Curl → Biceps). Usually empty.">
+                  <MultiSelect
+                    selected={form.additional_primary_muscle_ids}
+                    onChange={(v) => set('additional_primary_muscle_ids', v)}
+                    options={muscleOptions}
+                    mapGroup={groupOfMuscle}
+                  />
+                </Field>
+              </div>
+            )}
+          </div>
         )}
 
         <div className="grid grid-cols-2 gap-4">
