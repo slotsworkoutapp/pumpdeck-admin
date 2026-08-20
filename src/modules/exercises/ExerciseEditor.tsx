@@ -98,7 +98,10 @@ export default function ExerciseEditor() {
       id: rowId,
       ...form,
       name: form.name.trim(),
-      primary_muscle_id: form.primary_muscle_id || null,
+      // A stretch has no primary and no additional primaries, whatever a row
+      // saved before this rule may still be carrying.
+      primary_muscle_id: isStretchy ? null : form.primary_muscle_id || null,
+      additional_primary_muscle_ids: isStretchy ? [] : form.additional_primary_muscle_ids,
       primary_group_raw: form.primary_group_raw || null,
       collection_id: form.collection_id || null,
       movement_family_key: form.movement_family_key || null,
@@ -155,6 +158,11 @@ export default function ExerciseEditor() {
           />
         </Field>
 
+        {/* Not asked for warm-ups and stretches: they file by GROUP, and the
+            app's own picker refuses to offer a head for one. Leaving the field
+            visible invited an answer the client would then discard, and every
+            row in the catalog already has it null. */}
+        {!isStretchy && (
         <Field
           label="Primary muscle"
           hint={
@@ -175,13 +183,14 @@ export default function ExerciseEditor() {
             placeholder="— none —"
           />
         </Field>
+        )}
 
         {/* Warm-ups and stretches only. Nobody asks for a side-delt stretch —
             they want a shoulder stretch, and the group is the honest filing. */}
-        {(form.kind_raw === 'warmup' || form.kind_raw === 'cooldown') && (
+        {isStretchy && (
           <Field
-            label="Or a muscle group"
-            hint="For stretches and warm-ups, where naming one head is false precision. Fills that group's stretch/warm-up slots. Replaces the primary muscle rather than joining it."
+            label="Muscle group"
+            hint="Where this is filed. Naming one head would be false precision — nobody asks for a lower-chest warm-up. Fills that group's stretch/warm-up slots."
           >
             <SelectField
               value={form.primary_group_raw ?? ''}
@@ -219,16 +228,21 @@ export default function ExerciseEditor() {
           label={isStretchy ? 'Muscles it reaches' : 'Secondary muscles'}
           hint={
             isStretchy
-              ? "Which muscles this stretches — no primary/secondary split, since warm-ups and stretches earn no volume either way. It's what the app's per-muscle stretch slots resolve on (legs only, now that the other groups stop at the group)."
+              ? "Which muscles this reaches — no primary/secondary split, since warm-ups and stretches earn no volume either way. LEGS heads are kept as-is (a quad stretch and a calf stretch are different things people ask for). Heads in any OTHER group are collapsed to that group by the app, which is also how an exercise records reaching more than one: a doorway chest stretch tagged Front Delt is filed under chest AND shoulders."
               : undefined
           }
         >
           <MultiSelect selected={form.secondary_muscle_ids} onChange={(v) => set('secondary_muscle_ids', v)} options={muscleOptions} />
         </Field>
 
+        {/* A second "home" muscle is a primary-vs-secondary idea, and warm-ups
+            and stretches don't have one — the field above already asks the only
+            question they answer. */}
+        {!isStretchy && (
         <Field label="Additional primary muscles" hint="Extra 'home' muscles for dual-movers (e.g. Hammer Curl → Biceps). Usually empty.">
           <MultiSelect selected={form.additional_primary_muscle_ids} onChange={(v) => set('additional_primary_muscle_ids', v)} options={muscleOptions} />
         </Field>
+        )}
 
         <Field label="Variation (movement family)" hint="Exercises sharing a family are interchangeable in a program.">
           <SelectField value={form.movement_family_key ?? ''} onChange={(v) => set('movement_family_key', v || null)} options={familyOptions} placeholder="— none —" />
