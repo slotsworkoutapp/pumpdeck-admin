@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   useFeedback,
   updateFeedback,
@@ -6,6 +6,7 @@ import {
   type FeedbackStatus,
   type FeedbackPriority,
 } from '../../lib/content';
+import { supabase } from '../../lib/supabase';
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -178,6 +179,8 @@ function FeedbackCard({
           turns a considered report into a wall. */}
       <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{row.message}</p>
 
+      {row.screenshot_path && <Screenshot path={row.screenshot_path} />}
+
       {/* Only on bugs. On a feature request the build number is noise. */}
       {isBug && (row.app_version || row.device_model || row.os_version) && (
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
@@ -258,6 +261,46 @@ function FeedbackCard({
         )}
       </div>
     </div>
+  );
+}
+
+/// A submitted screenshot. The bucket is private, so this signs a short-lived
+/// URL on mount rather than linking a public one — the picture can contain
+/// whatever was on the user's screen when they hit send.
+///
+/// Click to open full size: the thumbnail is enough to recognise the screen,
+/// never enough to read it.
+function Screenshot({ path }: { path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data, error } = await supabase.storage
+        .from('feedback-screenshots')
+        .createSignedUrl(path, 60 * 60);
+      if (!alive) return;
+      if (error || !data) setFailed(true);
+      else setUrl(data.signedUrl);
+    })();
+    return () => { alive = false; };
+  }, [path]);
+
+  if (failed) {
+    return <p className="mt-3 text-xs text-slate-400">Screenshot couldn't be loaded.</p>;
+  }
+  if (!url) {
+    return <div className="mt-3 h-28 w-20 animate-pulse rounded-lg bg-slate-100" />;
+  }
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="mt-3 inline-block">
+      <img
+        src={url}
+        alt="Screenshot attached to this feedback"
+        className="max-h-40 rounded-lg border border-slate-200 object-contain transition hover:border-slate-300"
+      />
+    </a>
   );
 }
 

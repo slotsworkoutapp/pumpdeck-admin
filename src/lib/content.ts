@@ -418,6 +418,10 @@ export interface FeedbackRow {
   status: FeedbackStatus;
   priority: FeedbackPriority;
   admin_note: string | null;
+  /// Storage path in the private `feedback-screenshots` bucket, or null. Needs
+  /// a signed URL to display — the bucket is never public, because a
+  /// screenshot can contain whatever was on someone's screen.
+  screenshot_path: string | null;
 }
 
 /// Triage a row. Omitted fields are left alone server-side, so changing
