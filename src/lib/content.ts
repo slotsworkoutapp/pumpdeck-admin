@@ -57,6 +57,10 @@ export interface ContentExercise {
   name: string;
   type_raw: string;
   kind_raw: string;
+  /// A second kind this is ALSO offered as, or null. A hip-flexor stretch
+  /// belongs before squats and after them; nothing else combines usefully,
+  /// which is why the form offers one pairing rather than a free choice.
+  also_kind_raw: string | null;
   primary_muscle_id: string | null;
   /// The exercise's collection — a `group_raw='focus'` muscle row (Mobility,
   /// Plyometrics, Conditioning). Independent of `primary_muscle_id`: a Burpee

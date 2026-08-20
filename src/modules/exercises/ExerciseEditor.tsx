@@ -12,17 +12,24 @@ const NAMESPACE = '9e1b7c42-1f3a-4d58-9a2e-6c0b5d8f44a1'; // == SeedID namespace
 const TYPES = ['reps', 'cardio', 'timed'];
 const MUSCLE_GROUPS = ['chest', 'back', 'shoulders', 'legs', 'core', 'biceps', 'triceps', 'forearms'];
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-// value stays 'cooldown' (what the app expects) but shows as "Stretch".
+// Values stay 'normal' / 'warmup' / 'cooldown' (what the app expects); the
+// labels are what the app shows. The fourth is a PAIR — kind warmup, also
+// cooldown — because an exercise can be offered as two kinds and this is the
+// only combination anyone performs: a hip-flexor stretch belongs before squats
+// and after them. "Also a workout" beside a stretch is not a thing.
+const KIND_WARMUP_AND_STRETCH = 'warmup+cooldown';
 const KIND_OPTIONS = [
   { value: 'normal', label: 'Normal' },
   { value: 'warmup', label: 'Warm-up' },
   { value: 'cooldown', label: 'Stretch' },
+  { value: KIND_WARMUP_AND_STRETCH, label: 'Warm-up & Stretch' },
 ];
 
 const blank: Omit<ContentExercise, 'id'> = {
   name: '',
   type_raw: 'reps',
   kind_raw: 'normal',
+  also_kind_raw: null,
   primary_muscle_id: null,
   primary_group_raw: null,
   primary_groups_raw: [],
@@ -110,6 +117,12 @@ export default function ExerciseEditor() {
   /// the app collapsed its two muscle rows into one for exactly these.
   const isStretchy = form.kind_raw === 'warmup' || form.kind_raw === 'cooldown';
 
+  /// The pair reads as one choice in the dropdown but is stored as two columns.
+  const kindChoice =
+    form.kind_raw === 'warmup' && form.also_kind_raw === 'cooldown'
+      ? KIND_WARMUP_AND_STRETCH
+      : form.kind_raw;
+
   async function save() {
     setError(null);
     if (!form.name.trim()) return setError('Name is required.');
@@ -124,6 +137,7 @@ export default function ExerciseEditor() {
       name: form.name.trim(),
       // A stretch has no primary and no additional primaries, whatever a row
       // saved before this rule may still be carrying.
+      also_kind_raw: form.also_kind_raw || null,
       primary_muscle_id: isStretchy ? null : form.primary_muscle_id || null,
       movement_family_key: isStretchy ? null : form.movement_family_key || null,
       additional_primary_muscle_ids: isStretchy ? [] : form.additional_primary_muscle_ids,
@@ -170,7 +184,19 @@ export default function ExerciseEditor() {
             <SelectField value={form.type_raw} onChange={(v) => set('type_raw', v)} options={TYPES.map((t) => ({ value: t, label: t }))} />
           </Field>
           <Field label="Kind">
-            <SelectField value={form.kind_raw} onChange={(v) => set('kind_raw', v)} options={KIND_OPTIONS} />
+            <SelectField
+              value={kindChoice}
+              onChange={(v) => {
+                if (v === KIND_WARMUP_AND_STRETCH) {
+                  setForm((f) => ({ ...f, kind_raw: 'warmup', also_kind_raw: 'cooldown' }));
+                } else {
+                  // Any single kind clears the second one, or switching away
+                  // from the pair would leave a stray "also" behind.
+                  setForm((f) => ({ ...f, kind_raw: v, also_kind_raw: null }));
+                }
+              }}
+              options={KIND_OPTIONS}
+            />
           </Field>
         </div>
 

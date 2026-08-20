@@ -60,6 +60,7 @@ const families = fa.data.map((f) => ({
 }));
 const exercises = ex.data.map((e) => ({
   id: e.id, name: e.name, type_raw: e.type_raw, kind_raw: e.kind_raw,
+  also_kind_raw: e.also_kind_raw ?? null,
   primary_muscle_id: e.primary_muscle_id,
   collection_id: e.collection_id ?? null,
   // Kept alongside the array so a client built before the array existed still
