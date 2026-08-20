@@ -98,10 +98,28 @@ export default function ExerciseEditor() {
         .map((m) => ({ value: m.id, label: m.name })),
     [catalog]
   );
-  const familyOptions = useMemo(
-    () => (catalog?.families ?? []).map((f) => ({ value: f.key, label: f.display_name })),
-    [catalog]
-  );
+  /// Variations for the muscle you picked, not all 55.
+  ///
+  /// A family belongs to a muscle GROUP, so choosing Upper Chest narrows to the
+  /// chest families — the app scopes its own variation picker the same way,
+  /// by the primary muscle, for the same reason: a variation is a version of
+  /// one movement, and "Calf Raise" is never a version of an incline press.
+  ///
+  /// Two deliberate escapes. With no primary muscle chosen there's nothing to
+  /// narrow BY, so everything shows rather than nothing. And a family the row
+  /// already holds always stays listed, even out of group — hiding the current
+  /// value would make the dropdown display a blank where a real answer is
+  /// stored, and saving would then quietly clear it.
+  const familyOptions = useMemo(() => {
+    const all = (catalog?.families ?? []).map((f) => ({
+      value: f.key,
+      label: f.display_name,
+      group: f.muscle_group_raw,
+    }));
+    const group = form.primary_muscle_id ? groupOfMuscle(form.primary_muscle_id) : null;
+    if (!group) return all;
+    return all.filter((f) => f.group === group || f.value === form.movement_family_key);
+  }, [catalog, form.primary_muscle_id, form.movement_family_key, groupOfMuscle]);
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -287,7 +305,14 @@ export default function ExerciseEditor() {
               filed at group grain and slotted at group grain, so a third grain in
               between is a question with nowhere to land. */}
           {!isStretchy && (
-            <Field label="Variation (movement family)" hint="Exercises sharing a family are interchangeable in a program.">
+            <Field
+              label="Variation (movement family)"
+              hint={
+                form.primary_muscle_id
+                  ? 'Exercises sharing a family are interchangeable in a program. Narrowed to this muscle\u2019s group.'
+                  : 'Exercises sharing a family are interchangeable in a program. Pick a primary muscle to narrow this list.'
+              }
+            >
               <SelectField value={form.movement_family_key ?? ''} onChange={(v) => set('movement_family_key', v || null)} options={familyOptions} placeholder="— none —" />
             </Field>
           )}
